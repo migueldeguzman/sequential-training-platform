@@ -1064,7 +1064,7 @@
       "title": "Frontend - Navigation Integration",
       "description": "Add Energy Profiler to main dashboard navigation",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Add Energy Profiler tab to main page.tsx",
         "Add icon for the tab",

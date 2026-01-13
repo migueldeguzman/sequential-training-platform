@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import type { Dataset, TrainingConfig, AuthState } from "@/types";
 import { loadAuth, clearAuth } from "@/lib/storage";
 import { authApi, trainingApi, datasetApi } from "@/lib/api";
@@ -15,7 +15,10 @@ import TrainingHistory from "@/components/TrainingHistory";
 import TestingPanel from "@/components/TestingPanel";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
-type TabType = "datasets" | "training" | "history" | "models" | "testing" | "settings";
+// Lazy load EnergyProfilerPanel for better performance
+const EnergyProfilerPanel = lazy(() => import("@/components/profiling/EnergyProfilerPanel"));
+
+type TabType = "datasets" | "training" | "history" | "models" | "testing" | "profiling" | "settings";
 
 export default function Home() {
   const [auth, setAuth] = useState<AuthState | null>(null);
@@ -108,12 +111,13 @@ export default function Home() {
     return <LoginForm onLogin={handleLogin} />;
   }
 
-  const tabs: { id: TabType; label: string }[] = [
+  const tabs: { id: TabType; label: string; icon?: string }[] = [
     { id: "datasets", label: "Datasets" },
     { id: "training", label: "Training" },
     { id: "history", label: "History" },
     { id: "models", label: "Models" },
     { id: "testing", label: "Testing" },
+    { id: "profiling", label: "Energy Profiler", icon: "⚡" },
     { id: "settings", label: "Settings" },
   ];
 
@@ -151,6 +155,7 @@ export default function Home() {
                     : "text-gray-400 hover:text-gray-200"
                 }`}
               >
+                {tab.icon && <span className="mr-2">{tab.icon}</span>}
                 {tab.label}
                 {tab.id === "training" && isTraining && (
                   <span className="ml-2 w-2 h-2 bg-green-400 rounded-full inline-block animate-pulse"></span>
@@ -190,6 +195,18 @@ export default function Home() {
           {activeTab === "models" && <ModelManagement />}
 
           {activeTab === "testing" && <TestingPanel />}
+
+          {activeTab === "profiling" && (
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-lg text-gray-400">Loading Energy Profiler...</div>
+                </div>
+              }
+            >
+              <EnergyProfilerPanel />
+            </Suspense>
+          )}
 
           {activeTab === "settings" && <SettingsPanel />}
         </ErrorBoundary>

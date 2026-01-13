@@ -2084,3 +2084,14 @@ Implementation details:
 - TypeScript types properly defined with D3SankeyNode
 - TypeScript compilation verified with npm run build (successful)
 - Updated PRD: EP-056 passes = true
+
+### EP-064: Frontend - Navigation Integration - COMPLETED
+- Added Energy Profiler tab to main page.tsx navigation
+- Updated TabType to include "profiling"
+- Added lightning bolt icon (⚡) for Energy Profiler tab
+- Implemented lazy loading of EnergyProfilerPanel component using React.lazy()
+- Added Suspense wrapper with loading fallback
+- Tab switching automatically handled by existing state management
+- Energy Profiler appears between "Testing" and "Settings" tabs
+- TypeScript compilation verified with npm run build (successful)
+- Updated PRD: EP-064 passes = true
