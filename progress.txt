@@ -2198,3 +2198,65 @@ System designed to collect maximum data even with failures:
 
 This implementation ensures robust production operation with graceful degradation and clear error reporting.
 Updated PRD: EP-065 passes = true
+
+
+---
+2026-01-14 | EP-058 | COMPLETED | Frontend - DeepDrilldown Component
+
+### Implementation Details
+Created src/components/profiling/DeepDrilldown.tsx - a modal component for displaying detailed deep operation metrics when a component is clicked in the heatmap.
+
+### Key Features
+1. **Modal Interface**
+   - Fixed overlay with centered modal
+   - Gradient header with component identification
+   - Responsive layout with max-height scroll container
+   - Close button in header and footer
+
+2. **Component Summary Section**
+   - Grid display of key metrics:
+     - Duration (ms)
+     - Activation Mean, Max, Std
+     - Sparsity percentage
+   - Clean, card-based layout with gray background
+
+3. **Deep Operations Breakdown**
+   - List of all deep operations for the selected component
+   - Each operation shows:
+     - Formatted operation name (snake_case to Title Case)
+     - Duration timing
+     - Relevant metrics based on operation type
+
+4. **Metric Categories with Color Coding**
+   - **Attention Metrics** (blue/indigo/purple):
+     - Attention Entropy - distribution of attention
+     - Max Attention Weight - peak attention value
+     - Attention Sparsity - percentage of near-zero weights
+   - **MLP Metrics** (orange):
+     - Activation Kill Ratio - activations zeroed by GELU/SiLU
+   - **LayerNorm Metrics** (green):
+     - Variance Ratio - output/input variance ratio
+
+5. **Empty State**
+   - Informative message when no deep operations available
+   - Icon and explanation about enabling deep profiling mode
+
+6. **Interactive Features**
+   - Close via button or clicking outside modal
+   - Tooltips on metric cards explaining each metric
+   - Hover effects for better UX
+
+### Technical Implementation
+- TypeScript with strict typing
+- Proper integration with existing types (ComponentMetrics, DeepOperationMetrics)
+- Reusable MetricCard component for consistent metric display
+- Helper function for operation name formatting
+- Responsive design with Tailwind CSS
+- Accessible with aria-labels
+
+### Build Verification
+- TypeScript compilation tested: npm run build successful
+- No type errors or warnings
+- Clean integration with existing profiling types
+
+Updated PRD: EP-058 passes = true

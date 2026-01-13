@@ -969,7 +969,7 @@
       "title": "Frontend - DeepDrilldown Component",
       "description": "Create detailed view for deep operation metrics",
       "priority": "MEDIUM",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Create src/components/profiling/DeepDrilldown.tsx",
         "Show when component is clicked in heatmap",
