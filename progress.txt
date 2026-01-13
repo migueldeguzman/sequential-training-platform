@@ -1934,3 +1934,35 @@ Component features:
 - TypeScript type safety throughout
 - Verified TypeScript compilation with npm run build (successful)
 - Updated PRD: EP-050 passes = true
+
+---
+Date: 2026-01-14
+Feature: EP-051 - MetricSelector Component
+Status: COMPLETED
+Description: Created metric selection dropdown for analysis views
+
+Implementation details:
+- Created src/components/profiling/MetricSelector.tsx
+- Implemented comprehensive metric options:
+  - Time (ms) - Execution time in milliseconds
+  - Energy (mJ) - Energy consumption in millijoules
+  - Power (mW) - Power draw in milliwatts
+  - Activation Mean - Mean absolute value of activations
+  - Activation Max - Maximum absolute value of activations
+  - Sparsity (%) - Percentage of near-zero activations
+  - Attention Entropy - Entropy of attention weights (deep profiling only)
+- Features:
+  - Type-safe MetricType union type for all supported metrics
+  - METRIC_OPTIONS array with complete metadata (label, unit, description)
+  - Props: selectedMetric, onMetricChange, isDeepProfiling, disabled, className
+  - Filters options based on deep profiling availability
+  - Shows metric description below selector
+  - Warning message for deep-profiling-only metrics when not available
+- UI/UX:
+  - Consistent styling with other profiling components
+  - Dark mode support
+  - Disabled state support
+  - Accessible labels and descriptions
+  - Clear unit indicators in option labels
+- TypeScript compilation verified with npm run build (successful)
+- Updated PRD: EP-051 passes = true

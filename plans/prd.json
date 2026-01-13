@@ -857,7 +857,7 @@
       "title": "Frontend - MetricSelector Component",
       "description": "Create metric selection dropdown for analysis views",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Create src/components/profiling/MetricSelector.tsx",
         "Options: Time (ms)",
