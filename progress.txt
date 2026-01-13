@@ -37,3 +37,19 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - Added is_running(), get_samples(), and get_current() methods
 - Verified Python syntax with py_compile (no errors)
 
+### EP-004: PowerMonitor Class - Plist Parsing - COMPLETED
+- Imported plistlib for parsing XML plist output from powermetrics
+- Implemented _parse_plist_sample() method to extract power metrics from plist dictionary
+- Extracts CPU power by summing all cluster power values
+- Extracts GPU power from processor.gpu.gpu_power field
+- Extracts ANE (Apple Neural Engine) power from processor.ane.power field
+- Extracts DRAM power by summing thermal channels with 'DRAM' in name
+- Calculates total_power_mw as sum of all components
+- Implemented _sampling_loop() background thread for continuous plist parsing
+- Buffers incoming plist XML until complete (detecting </plist> end tag)
+- Handles parsing errors gracefully with warning messages (no crashes)
+- Updated start() to launch background sampling thread
+- Updated stop() to properly join sampling thread with timeout
+- PowerSample dataclass already existed with all required fields
+- Verified Python syntax with py_compile (no errors)
+

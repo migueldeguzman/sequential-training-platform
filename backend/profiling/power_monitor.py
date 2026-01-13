@@ -9,9 +9,12 @@ Requires: sudoers entry for passwordless powermetrics access
 
 import subprocess
 import time
-from typing import Optional, List
+import plistlib
+import threading
+from typing import Optional, List, Dict, Any
 from dataclasses import dataclass, field
 from datetime import datetime
+import io
 
 
 @dataclass
@@ -61,6 +64,104 @@ class PowerMonitor:
         self._samples: List[PowerSample] = []
         self._start_time: Optional[float] = None
         self._running = False
+        self._sampling_thread: Optional[threading.Thread] = None
+        self._plist_buffer = ""
+
+    def _parse_plist_sample(self, plist_data: Dict[str, Any]) -> Optional[PowerSample]:
+        """
+        Parse a single power sample from powermetrics plist output.
+
+        Args:
+            plist_data: Parsed plist dictionary from powermetrics
+
+        Returns:
+            PowerSample object or None if parsing fails
+        """
+        try:
+            timestamp = time.time()
+            relative_time_ms = (timestamp - self._start_time) * 1000.0 if self._start_time else 0.0
+
+            # Initialize power values to 0
+            cpu_power_mw = 0.0
+            gpu_power_mw = 0.0
+            ane_power_mw = 0.0
+            dram_power_mw = 0.0
+
+            # Extract processor data (contains CPU, GPU, ANE power)
+            processor = plist_data.get('processor', {})
+
+            # CPU power - sum all clusters
+            clusters = processor.get('clusters', [])
+            for cluster in clusters:
+                cpu_power_mw += cluster.get('cpu_power', 0.0)
+
+            # GPU power
+            gpu = processor.get('gpu', {})
+            gpu_power_mw = gpu.get('gpu_power', 0.0)
+
+            # ANE (Apple Neural Engine) power
+            ane = processor.get('ane', {})
+            ane_power_mw = ane.get('power', 0.0)
+
+            # DRAM power - from thermal samplers
+            thermal = plist_data.get('thermal', {})
+            if 'channels' in thermal:
+                # Sum DRAM power from all channels
+                for channel in thermal.get('channels', []):
+                    if 'DRAM' in channel.get('name', ''):
+                        dram_power_mw += channel.get('power', 0.0)
+
+            # Calculate total power
+            total_power_mw = cpu_power_mw + gpu_power_mw + ane_power_mw + dram_power_mw
+
+            return PowerSample(
+                timestamp=timestamp,
+                relative_time_ms=relative_time_ms,
+                cpu_power_mw=cpu_power_mw,
+                gpu_power_mw=gpu_power_mw,
+                ane_power_mw=ane_power_mw,
+                dram_power_mw=dram_power_mw,
+                total_power_mw=total_power_mw
+            )
+        except (KeyError, TypeError, ValueError) as e:
+            # Gracefully handle parsing errors
+            print(f"Warning: Failed to parse power sample: {e}")
+            return None
+
+    def _sampling_loop(self) -> None:
+        """
+        Background thread to continuously read and parse powermetrics output.
+        """
+        if not self._process or not self._process.stdout:
+            return
+
+        try:
+            # Read powermetrics output line by line
+            for line in self._process.stdout:
+                if not self._running:
+                    break
+
+                # Buffer lines until we have a complete plist
+                self._plist_buffer += line
+
+                # Check if we have a complete plist (ends with </plist>)
+                if '</plist>' in line:
+                    try:
+                        # Parse the complete plist
+                        plist_data = plistlib.loads(self._plist_buffer.encode('utf-8'))
+
+                        # Extract power sample
+                        sample = self._parse_plist_sample(plist_data)
+                        if sample:
+                            self._samples.append(sample)
+
+                        # Reset buffer for next sample
+                        self._plist_buffer = ""
+                    except Exception as e:
+                        print(f"Warning: Failed to parse plist: {e}")
+                        self._plist_buffer = ""
+        except Exception as e:
+            print(f"Error in sampling loop: {e}")
 
     @classmethod
     def is_available(cls) -> bool:
@@ -119,6 +220,11 @@ class PowerMonitor:
         self._start_time = time.time()
         self._running = True
         self._samples = []
+        self._plist_buffer = ""
+
+        # Start background sampling thread
+        self._sampling_thread = threading.Thread(target=self._sampling_loop, daemon=True)
+        self._sampling_thread.start()
 
     def stop(self) -> None:
         """
@@ -132,6 +238,9 @@ class PowerMonitor:
         if not self._running:
             raise RuntimeError("PowerMonitor is not running")
 
+        # Signal thread to stop
+        self._running = False
+
         # Terminate powermetrics subprocess
         if self._process:
             self._process.terminate()
@@ -141,8 +250,12 @@ class PowerMonitor:
                 self._process.kill()
                 self._process.wait()
 
-        self._running = False
+        # Wait for sampling thread to finish
+        if self._sampling_thread and self._sampling_thread.is_alive():
+            self._sampling_thread.join(timeout=2)
+
         self._process = None
+        self._sampling_thread = None
 
     def is_running(self) -> bool:
         """Check if the PowerMonitor is currently running"""

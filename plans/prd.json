@@ -144,7 +144,7 @@
       "title": "PowerMonitor Class - Plist Parsing",
       "description": "Parse powermetrics plist/XML output into structured data",
       "priority": "CRITICAL",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Implement plist XML parser for powermetrics output",
         "Extract CPU power (per cluster if available)",
