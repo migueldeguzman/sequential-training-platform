@@ -317,3 +317,24 @@ export const profilingApi = {
       method: "DELETE",
     }),
 };
+
+// Combined API export
+export const api = {
+  datasets: datasetApi,
+  files: filesApi,
+  training: trainingApi,
+  models: modelApi,
+  settings: settingsApi,
+  auth: authApi,
+  inference: inferenceApi,
+  profiling: profilingApi,
+
+  // Direct access to profiling methods for convenience
+  profiledGenerate: profilingApi.profiledGenerate,
+  getProfilingRuns: profilingApi.getProfilingRuns,
+  getProfilingRun: profilingApi.getProfilingRun,
+  getProfilingRunSummary: profilingApi.getProfilingRunSummary,
+  getProfilingPipeline: profilingApi.getProfilingPipeline,
+  exportProfilingRun: profilingApi.exportProfilingRun,
+  deleteProfilingRun: profilingApi.deleteProfilingRun,
+};

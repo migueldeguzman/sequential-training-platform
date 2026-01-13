@@ -729,7 +729,7 @@
       "title": "Frontend - ProfilingContext",
       "description": "Create React context for profiling state",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Create src/components/profiling/ProfilingContext.tsx",
         "Store current profiling run state",

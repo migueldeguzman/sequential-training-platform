@@ -1609,3 +1609,51 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - Fixed all TypeScript linting errors with eslint-disable-next-line comments
 - Verified TypeScript compilation with npm run build (successful)
 - Updated PRD: EP-042 passes = true
+
+### EP-043: Frontend - ProfilingContext - COMPLETED
+- Created src/components/profiling/ProfilingContext.tsx with React context for profiling state
+- Implemented ProfilingState interface with comprehensive state management:
+  - currentRun: Active ProfilingRun during inference
+  - isRunning, isProfiling: Boolean flags for profiling status
+  - powerSamples: Array of PowerSample objects for real-time timeline
+  - tokens: Array of TokenMetrics for real-time token stream
+  - sections: Array of PipelineSection for real-time section tracking
+  - currentSection: CurrentSection object tracking active section (phase, section_name, start_time)
+  - connectionState: WebSocket connection state (disconnected, connecting, connected, reconnecting)
+  - wsError: Error object for WebSocket errors
+  - completedRunId: Run ID after inference completion for database reference
+- Implemented ProfilingActions interface with all profiling actions:
+  - startProfiling(request: ProfiledGenerateRequest): Initiates profiled inference
+  - stopProfiling(): Manually stops profiling session
+  - clearState(): Resets all state to initial values
+  - connectWebSocket(), disconnectWebSocket(): Manual WebSocket control
+- Implemented ProfilingProvider component with full lifecycle management:
+  - Uses useProfilingWebSocket hook for WebSocket integration
+  - Subscribes to all WebSocket message types (power_sample, section_start, section_end, token_complete, inference_complete)
+  - Updates state in real-time as messages arrive
+  - Handles power_sample events: appends PowerSample to powerSamples array
+  - Handles section_start events: updates currentSection with phase, section_name, start_time
+  - Handles section_end events: creates PipelineSection object, appends to sections array, clears currentSection
+  - Handles token_complete events: creates TokenMetrics object, appends to tokens array
+  - Handles inference_complete events: updates isRunning/isProfiling flags, stores completedRunId
+- Implemented startProfiling action:
+  - Clears previous state before starting new session
+  - Connects WebSocket first, waits 500ms for connection
+  - Creates initial currentRun object with prompt, model, experiment metadata
+  - Calls api.profiledGenerate() to start backend profiling
+  - Error handling for failed profiling starts
+- Implemented stopProfiling action:
+  - Updates state flags to stop profiling
+  - Disconnects WebSocket after 1-second delay (allows pending messages)
+- Implemented useProfilingContext hook for consuming context:
+  - Throws error if used outside ProfilingProvider
+  - Returns full ProfilingContextValue with state and actions
+- Extended api.ts with combined api export object:
+  - Exports all API namespaces (datasets, files, training, models, settings, auth, inference, profiling)
+  - Exports direct access methods for convenience (profiledGenerate, getProfilingRuns, etc.)
+- Fixed TypeScript compilation errors:
+  - Fixed prev variable scoping in setState callbacks (moved prev inside callback)
+  - Fixed section_end handler to compute PipelineSection inside setState callback
+  - Fixed token_complete handler to compute TokenMetrics inside setState callback
+- Verified TypeScript compilation with npm run build (successful)
+- Updated PRD: EP-043 passes = true
