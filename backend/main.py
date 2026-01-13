@@ -1680,6 +1680,28 @@ async def profiled_generate(request: ProfiledGenerateRequest):
             except Exception as e:
                 logger.error(f"Failed to stream section event: {e}")
 
+        # Define token complete callback for WebSocket streaming
+        def stream_token_complete(token_data):
+            """Callback to stream token completion events via WebSocket"""
+            try:
+                message = {
+                    "type": ProfilingMessageType.TOKEN_COMPLETE,
+                    "timestamp": token_data.get("timestamp"),
+                    "data": {
+                        "token_index": token_data.get("token_index"),
+                        "token_text": token_data.get("token_text"),
+                        "duration_ms": token_data.get("duration_ms"),
+                        "energy_mj": token_data.get("energy_mj"),
+                        "avg_power_mw": token_data.get("avg_power_mw"),
+                        "power_snapshot": token_data.get("power_snapshot"),
+                        "layer_metrics_summary": token_data.get("layer_metrics_summary")
+                    }
+                }
+                # Broadcast to all connected WebSocket clients
+                asyncio.create_task(profiling_manager.broadcast(message))
+            except Exception as e:
+                logger.error(f"Failed to stream token complete event: {e}")
+
         # Create pipeline profiler with streaming callbacks
         profiler = InferencePipelineProfiler(
             power_monitor=power_monitor,
@@ -1687,7 +1709,8 @@ async def profiled_generate(request: ProfiledGenerateRequest):
             deep_profiler=deep_profiler,
             database=database,
             power_sample_callback=stream_power_sample,
-            section_event_callback=stream_section_event
+            section_event_callback=stream_section_event,
+            token_complete_callback=stream_token_complete
         )
 
         # Start profiling session

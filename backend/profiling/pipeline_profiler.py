@@ -50,6 +50,7 @@ logger = logging.getLogger(__name__)
 # WebSocket callback types for streaming profiling events
 PowerSampleCallback = Optional[callable]  # Callback signature: callback(sample: PowerSample)
 SectionEventCallback = Optional[callable]  # Callback signature: callback(event_type: str, phase: str, section_name: str, timestamp: float, data: dict)
+TokenCompleteCallback = Optional[callable]  # Callback signature: callback(token_data: dict)
 
 
 @dataclass
@@ -88,6 +89,7 @@ class ProfilingSession:
 
     # WebSocket streaming callbacks
     section_event_callback: SectionEventCallback = None
+    token_complete_callback: TokenCompleteCallback = None
 
 
 class InferencePipelineProfiler:
@@ -105,7 +107,8 @@ class InferencePipelineProfiler:
         deep_profiler: Optional[DeepAttentionProfiler] = None,
         database: Optional[ProfileDatabase] = None,
         power_sample_callback: PowerSampleCallback = None,
-        section_event_callback: SectionEventCallback = None
+        section_event_callback: SectionEventCallback = None,
+        token_complete_callback: TokenCompleteCallback = None
     ):
         """
         Initialize the inference pipeline profiler.
@@ -117,6 +120,7 @@ class InferencePipelineProfiler:
             database: ProfileDatabase instance for storing profiling data
             power_sample_callback: Optional callback for streaming power samples (for WebSocket)
             section_event_callback: Optional callback for streaming section events (for WebSocket)
+            token_complete_callback: Optional callback for streaming token completion events (for WebSocket)
         """
         self.power_monitor = power_monitor
         self.layer_profiler = layer_profiler
@@ -124,6 +128,7 @@ class InferencePipelineProfiler:
         self.database = database
         self.power_sample_callback = power_sample_callback
         self.section_event_callback = section_event_callback
+        self.token_complete_callback = token_complete_callback
 
         # Current active session
         self._current_session: Optional[ProfilingSession] = None
@@ -230,7 +235,8 @@ class InferencePipelineProfiler:
             layer_profiler=self.layer_profiler,
             deep_profiler=self.deep_profiler,
             database=self.database,
-            section_event_callback=self.section_event_callback
+            section_event_callback=self.section_event_callback,
+            token_complete_callback=self.token_complete_callback
         )
 
         # Store as current session
@@ -867,6 +873,98 @@ class InferencePipelineProfiler:
                 logger.debug(f"Token {token_index}: Captured {len(layer_timings)} layer timings")
 
             return next_token_logits, updated_kwargs
+
+    def emit_token_complete_event(
+        self,
+        session: ProfilingSession,
+        token_index: int,
+        token_text: str,
+        duration_ms: float,
+        energy_mj: Optional[float] = None,
+        avg_power_mw: Optional[float] = None
+    ):
+        """
+        Emit a token_complete event via WebSocket callback.
+
+        This should be called after a decode token is generated to stream
+        real-time token metrics to connected clients.
+
+        Args:
+            session: Active profiling session
+            token_index: Index of the generated token (0-based)
+            token_text: Decoded text of the token
+            duration_ms: Time taken to generate this token
+            energy_mj: Energy consumed for this token (if available)
+            avg_power_mw: Average power during token generation (if available)
+
+        Example:
+            for token_idx in range(max_tokens):
+                # ... generate token ...
+                profiler.emit_token_complete_event(
+                    session, token_idx, token_text, duration_ms, energy_mj, avg_power_mw
+                )
+        """
+        if not session.token_complete_callback:
+            return
+
+        # Get current power snapshot
+        power_snapshot = None
+        if session.power_monitor:
+            current_sample = session.power_monitor.get_current()
+            if current_sample:
+                power_snapshot = {
+                    "cpu_power_mw": current_sample.cpu_power_mw,
+                    "gpu_power_mw": current_sample.gpu_power_mw,
+                    "ane_power_mw": current_sample.ane_power_mw,
+                    "dram_power_mw": current_sample.dram_power_mw,
+                    "total_power_mw": current_sample.total_power_mw
+                }
+
+        # Get layer metrics summary for this token
+        layer_metrics_summary = None
+        if session.layer_profiler:
+            layer_timings = session.layer_profiler.get_timings()
+            if layer_timings:
+                # Calculate summary statistics
+                total_layer_time = sum(t.duration_ms for t in layer_timings)
+                avg_activation_mean = sum(t.activation_mean for t in layer_timings if t.activation_mean is not None) / len(layer_timings) if layer_timings else None
+
+                layer_metrics_summary = {
+                    "num_layers": len(layer_timings),
+                    "total_duration_ms": total_layer_time,
+                    "avg_activation_mean": avg_activation_mean,
+                    "components": {}
+                }
+
+                # Group by component type
+                for timing in layer_timings:
+                    comp_name = timing.component_name
+                    if comp_name not in layer_metrics_summary["components"]:
+                        layer_metrics_summary["components"][comp_name] = {
+                            "count": 0,
+                            "total_duration_ms": 0.0
+                        }
+                    layer_metrics_summary["components"][comp_name]["count"] += 1
+                    layer_metrics_summary["components"][comp_name]["total_duration_ms"] += timing.duration_ms
+
+        # Build token complete message
+        token_data = {
+            "token_index": token_index,
+            "token_text": token_text,
+            "duration_ms": duration_ms,
+            "energy_mj": energy_mj,
+            "avg_power_mw": avg_power_mw,
+            "power_snapshot": power_snapshot,
+            "layer_metrics_summary": layer_metrics_summary,
+            "timestamp": time.time()
+        }
+
+        # Emit via callback
+        try:
+            session.token_complete_callback(token_data)
+            logger.debug(f"Emitted token_complete event for token {token_index}: {token_text}")
+        except Exception as e:
+            logger.error(f"Error in token_complete callback: {e}")
 
     def profile_decode_embedding(
         self,

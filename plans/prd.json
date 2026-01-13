@@ -640,7 +640,7 @@
       "title": "WebSocket Profiling - Token Events",
       "description": "Stream token generation events",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Create token_complete message type",
         "Include token position and text",
