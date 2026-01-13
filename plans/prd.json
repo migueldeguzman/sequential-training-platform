@@ -906,7 +906,7 @@
       "title": "Frontend - PipelineTimeline Component",
       "description": "Create horizontal timeline of inference phases",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Create src/components/profiling/charts/PipelineTimeline.tsx",
         "Show pre_inference, prefill, decode, post_inference as bars",

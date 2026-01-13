@@ -2019,3 +2019,23 @@ Implementation details:
 - Empty state handling with friendly message when no tokens available
 - TypeScript compilation verified with npm run build (successful)
 - Updated PRD: EP-053 passes = true
+
+2026-01-14 - EP-054: PipelineTimeline Component - COMPLETE
+- Created horizontal timeline visualization for inference phases
+- Features implemented:
+  - Four-phase timeline: pre_inference, prefill, decode, post_inference
+  - Bar width proportional to phase duration
+  - Color-coded phases: indigo (pre), violet (prefill), pink (decode), teal (post)
+  - Color intensity based on energy consumption (darker = more energy)
+  - Percentage labels showing each phase's proportion of total time
+  - Duration (ms) and energy (mJ) displayed in center of each bar
+  - Click handler for section expansion/drill-down
+  - Interactive hover effects with detailed tooltip
+  - Timeline axis with time markers (ms) below bars
+  - Canvas-based rendering for smooth performance
+  - Tooltip shows: phase name, section name, duration, energy, time range
+- Component accepts sections array, onSectionClick callback
+- Groups sections by phase and aggregates metrics
+- Calculates total duration and energy per phase
+- TypeScript compilation verified with npm run build (successful)
+- Updated PRD: EP-054 passes = true
