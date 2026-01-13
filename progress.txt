@@ -81,3 +81,19 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - Enabled sqlite3.Row factory for column access by name
 - Verified Python syntax with py_compile (no errors)
 
+### EP-007: ProfileDatabase Class - CRUD Operations - COMPLETED
+- Implemented create_run() method to insert new profiling run with all metadata fields
+- Implemented add_power_samples() with batch insert using executemany() for performance
+- Implemented add_pipeline_section() to insert section timing and energy data
+- Implemented add_token() to insert per-token metrics during inference
+- Implemented add_layer_metrics() with batch insert for per-layer per-token data
+- Implemented add_component_metrics() with batch insert for attention/MLP/layernorm components
+- Implemented add_deep_operation_metrics() with batch insert for lowest-level operations
+- All methods include comprehensive docstrings with argument descriptions
+- All methods return appropriate values (row IDs for create operations, None for batch inserts)
+- All methods use parameterized queries to prevent SQL injection
+- All batch insert methods use executemany() for performance
+- Proper handling of Optional fields with .get() method on dictionaries
+- Added debug logging for all insert operations
+- Verified Python syntax with py_compile (no errors)
+
