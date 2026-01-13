@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { ProfilingRun } from '@/types';
+import ModelComparisonChart from './charts/ModelComparisonChart';
 
 interface CompareViewProps {
   runs: ProfilingRun[];
@@ -9,9 +10,11 @@ interface CompareViewProps {
 }
 
 type ComparisonMetric = 'energy' | 'duration' | 'efficiency' | 'power' | 'tokens';
+type ChartType = 'scatter' | 'bar';
 
 const CompareView: React.FC<CompareViewProps> = ({ runs, onRemoveRun }) => {
   const [selectedMetric, setSelectedMetric] = useState<ComparisonMetric>('energy');
+  const [chartType, setChartType] = useState<ChartType>('scatter');
 
   // Calculate statistics for highlighting differences
   const statistics = useMemo(() => {
@@ -72,6 +75,18 @@ const CompareView: React.FC<CompareViewProps> = ({ runs, onRemoveRun }) => {
     if (avg === 0) return 0;
     return ((value - avg) / avg) * 100;
   };
+
+  // Prepare chart data
+  const chartData = useMemo(() => {
+    return runs.map(run => ({
+      run_id: run.id,
+      model_name: run.model_name,
+      total_params: run.total_params || 0,
+      total_energy_mj: run.total_energy_mj,
+      energy_per_token_mj: run.total_energy_mj / (run.input_tokens + run.output_tokens),
+      tokens_per_joule: run.tokens_per_joule || 0
+    }));
+  }, [runs]);
 
   return (
     <div className="w-full h-full flex flex-col p-6 overflow-auto">
@@ -376,27 +391,42 @@ const CompareView: React.FC<CompareViewProps> = ({ runs, onRemoveRun }) => {
             </div>
           </div>
 
-          {/* Overlay Chart Placeholder */}
+          {/* Model Comparison Charts */}
           <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-            <h4 className="text-sm font-semibold text-white mb-3">Power Timeline Overlay</h4>
-            <div className="h-48 flex items-center justify-center text-gray-500">
-              <div className="text-center">
-                <svg
-                  className="w-12 h-12 mx-auto mb-2 text-gray-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+            <div className="flex justify-between items-center mb-4">
+              <h4 className="text-sm font-semibold text-white">Model Comparison</h4>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setChartType('scatter')}
+                  className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                    chartType === 'scatter'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                  />
-                </svg>
-                <p className="text-sm">Overlay chart visualization coming soon</p>
-                <p className="text-xs text-gray-600 mt-1">Will show power timelines superimposed</p>
+                  Scatter Plot
+                </button>
+                <button
+                  onClick={() => setChartType('bar')}
+                  className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                    chartType === 'bar'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  Bar Chart
+                </button>
               </div>
+            </div>
+            <div className="h-96">
+              <ModelComparisonChart runs={chartData} chartType={chartType} />
+            </div>
+            <div className="mt-4 text-xs text-gray-400">
+              {chartType === 'scatter' ? (
+                <p>Scatter plot shows model size vs energy consumption. Color indicates efficiency (green = more efficient).</p>
+              ) : (
+                <p>Bar chart shows energy per token sorted from most to least efficient.</p>
+              )}
             </div>
           </div>
         </div>

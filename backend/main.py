@@ -2485,6 +2485,186 @@ async def delete_profiling_run(run_id: str):
             db.close()
 
 
+@app.post("/api/profiling/compare")
+async def compare_profiling_runs(run_ids: List[str]):
+    """
+    Compare multiple profiling runs with normalized metrics.
+
+    Accepts a list of run IDs and returns comparison data with metrics normalized
+    by prompt length for fair comparison across different inputs.
+
+    Args:
+        run_ids: List of profiling run IDs to compare (2-10 runs)
+
+    Returns:
+        {
+            "runs": [
+                {
+                    "run_id": str,
+                    "model_name": str,
+                    "prompt": str,
+                    "input_tokens": int,
+                    "output_tokens": int,
+                    "total_tokens": int,
+                    "duration_ms": float,
+                    "total_energy_mj": float,
+                    "peak_power_mw": float,
+                    "avg_power_mw": float,
+                    # Efficiency metrics
+                    "energy_per_token_mj": float,
+                    "energy_per_input_token_mj": float,
+                    "energy_per_output_token_mj": float,
+                    "tokens_per_second": float,
+                    "tokens_per_joule": float,
+                    # Model features
+                    "total_params": int,
+                    "num_layers": int,
+                    "hidden_size": int,
+                    "attention_mechanism": str,
+                    # Phase breakdown
+                    "prefill_energy_mj": float,
+                    "decode_energy_mj": float,
+                    "prefill_duration_ms": float,
+                    "decode_duration_ms": float
+                },
+                ...
+            ],
+            "comparison": {
+                "most_efficient": {run_id, tokens_per_joule},
+                "fastest": {run_id, tokens_per_second},
+                "lowest_energy": {run_id, total_energy_mj},
+                "energy_range": {min, max, spread_factor}
+            }
+        }
+
+    Raises:
+        HTTPException: 400 if invalid number of runs, 404 if run not found
+    """
+    db = None
+    try:
+        # Validate input
+        if not run_ids or len(run_ids) < 2:
+            raise HTTPException(
+                status_code=400,
+                detail="At least 2 run IDs required for comparison"
+            )
+        if len(run_ids) > 10:
+            raise HTTPException(
+                status_code=400,
+                detail="Maximum 10 runs allowed for comparison"
+            )
+
+        # Connect to database
+        db = ProfileDatabase()
+
+        # Fetch all runs
+        runs_data = []
+        for run_id in run_ids:
+            run = db.get_run(run_id)
+            if not run:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Profiling run {run_id} not found"
+                )
+
+            # Get summary for efficiency metrics
+            summary = db.get_run_summary(run_id)
+
+            # Calculate efficiency metrics
+            total_tokens = run.get('input_tokens', 0) + run.get('output_tokens', 0)
+            energy_per_token = (run['total_energy_mj'] / total_tokens) if total_tokens > 0 else 0
+
+            prefill_energy = summary.get('prefill', {}).get('energy_mj', 0)
+            decode_energy = summary.get('decode', {}).get('energy_mj', 0)
+
+            input_tokens = run.get('input_tokens', 0)
+            output_tokens = run.get('output_tokens', 0)
+
+            energy_per_input_token = (prefill_energy / input_tokens) if input_tokens > 0 else 0
+            energy_per_output_token = (decode_energy / output_tokens) if output_tokens > 0 else 0
+
+            duration_s = run['duration_ms'] / 1000.0 if run['duration_ms'] else 0
+            tokens_per_second = (total_tokens / duration_s) if duration_s > 0 else 0
+
+            energy_joules = run['total_energy_mj'] / 1000.0
+            tokens_per_joule = (total_tokens / energy_joules) if energy_joules > 0 else 0
+
+            # Build comparison entry
+            runs_data.append({
+                "run_id": run['run_id'],
+                "model_name": run['model_name'],
+                "prompt": run['prompt'],
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": total_tokens,
+                "duration_ms": run['duration_ms'],
+                "total_energy_mj": run['total_energy_mj'],
+                "peak_power_mw": run.get('peak_power_mw', 0),
+                "avg_power_mw": run.get('avg_power_mw', 0),
+                # Efficiency metrics
+                "energy_per_token_mj": energy_per_token,
+                "energy_per_input_token_mj": energy_per_input_token,
+                "energy_per_output_token_mj": energy_per_output_token,
+                "tokens_per_second": tokens_per_second,
+                "tokens_per_joule": tokens_per_joule,
+                # Model features
+                "total_params": run.get('total_params', 0),
+                "num_layers": run.get('num_layers', 0),
+                "hidden_size": run.get('hidden_size', 0),
+                "attention_mechanism": run.get('attention_mechanism', 'unknown'),
+                # Phase breakdown
+                "prefill_energy_mj": prefill_energy,
+                "decode_energy_mj": decode_energy,
+                "prefill_duration_ms": summary.get('prefill', {}).get('duration_ms', 0),
+                "decode_duration_ms": summary.get('decode', {}).get('duration_ms', 0)
+            })
+
+        # Calculate comparison metrics
+        most_efficient = max(runs_data, key=lambda x: x['tokens_per_joule'])
+        fastest = max(runs_data, key=lambda x: x['tokens_per_second'])
+        lowest_energy = min(runs_data, key=lambda x: x['total_energy_mj'])
+
+        energy_values = [r['total_energy_mj'] for r in runs_data]
+        energy_min = min(energy_values)
+        energy_max = max(energy_values)
+        energy_spread = (energy_max / energy_min) if energy_min > 0 else 0
+
+        return {
+            "runs": runs_data,
+            "comparison": {
+                "most_efficient": {
+                    "run_id": most_efficient['run_id'],
+                    "tokens_per_joule": most_efficient['tokens_per_joule']
+                },
+                "fastest": {
+                    "run_id": fastest['run_id'],
+                    "tokens_per_second": fastest['tokens_per_second']
+                },
+                "lowest_energy": {
+                    "run_id": lowest_energy['run_id'],
+                    "total_energy_mj": lowest_energy['total_energy_mj']
+                },
+                "energy_range": {
+                    "min": energy_min,
+                    "max": energy_max,
+                    "spread_factor": energy_spread
+                }
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to compare profiling runs: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to compare profiling runs: {str(e)}"
+        )
+    finally:
+        if db:
+            db.close()
+
+
 # WebSocket connection manager for profiling streams
 class ProfilingConnectionManager:
     """Manages WebSocket connections for real-time profiling data streaming."""

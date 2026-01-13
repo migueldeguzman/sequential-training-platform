@@ -240,6 +240,7 @@ export interface ProfilingRun {
   inference_engine?: string;
 
   // Model architectural features
+  total_params?: number;
   num_layers?: number;
   hidden_size?: number;
   intermediate_size?: number;

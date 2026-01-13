@@ -2719,3 +2719,44 @@ Updated PRD: EP-076 passes = true
 - Future enhancement: Option to subtract baseline from all measurements in API
 
 **Reference**: TokenPowerBench methodology - separates idle from active power for accurate attribution
+
+
+---
+
+## 2026-01-14 - EP-077: Model Comparison View (MEDIUM)
+
+**Status**: ✅ COMPLETE
+
+**Description**: Implemented comprehensive model comparison view with normalized metrics for fair comparison across different models and configurations.
+
+**Implementation**:
+- Created /api/profiling/compare endpoint in backend/main.py
+  - Accepts list of 2-10 run IDs for comparison
+  - Returns normalized metrics for fair comparison
+  - Calculates efficiency metrics: energy_per_token, tokens_per_joule, etc.
+  - Computes comparison highlights: most_efficient, fastest, lowest_energy
+  - Returns energy_range with spread_factor
+- Created ModelComparisonChart component (charts/ModelComparisonChart.tsx)
+  - Scatter plot view: model size vs energy consumption
+  - Bar chart view: energy per token sorted by efficiency
+  - Color-coded by efficiency (green = efficient, red = inefficient)
+  - Interactive tooltips showing full metrics
+  - Canvas-based rendering for performance
+- Updated CompareView.tsx to integrate ModelComparisonChart
+  - Added chart type selector (scatter/bar toggle)
+  - Prepared chart data from ProfilingRun objects
+  - Maintains existing side-by-side comparison tables
+  - Added descriptive text explaining each chart type
+- Added total_params field to ProfilingRun type interface
+- Verified TypeScript compilation with npm run build (success)
+
+**Technical Details**:
+- Scatter plot maps model parameters (x-axis) to energy consumption (y-axis)
+- Efficiency encoded as color gradient: red (low) → yellow → green (high)
+- Bar chart sorts models by energy_per_token for easy identification of most efficient
+- Comparison endpoint performs all calculations server-side for consistency
+- Metrics normalized by token count for fair comparison across different prompts
+- Energy spread factor shows order-of-magnitude differences between models
+
+**Reference**: Paper Figure 4 - Same parameter count can have order-of-magnitude energy differences due to architectural choices
+

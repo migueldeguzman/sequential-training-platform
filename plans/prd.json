@@ -1262,7 +1262,7 @@
       "title": "Model Comparison View",
       "description": "Compare energy profiles across different models and configurations",
       "priority": "MEDIUM",
-      "passes": false,
+      "passes": true,
       "reference": "Paper Figure 4: Same parameter count can have order-of-magnitude energy differences",
       "steps": [
         "Create /api/profiling/compare endpoint",
