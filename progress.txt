@@ -1667,3 +1667,27 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - Added placeholder content for each view
 - Verified TypeScript compilation with npm run build (successful)
 - Updated PRD: EP-044 passes = true
+
+## 2026-01-14
+### EP-045: Frontend - ProfilingControls Component - COMPLETED
+- Created src/components/profiling/ProfilingControls.tsx
+- Added model selector dropdown with optional model path input
+- Added prompt textarea input with required validation
+- Added profiling depth selector (Module/Deep) with helpful descriptions
+- Added advanced settings section (collapsible) with:
+  - Experiment name input
+  - Tags input (comma-separated)
+  - Temperature slider (0-2 range)
+  - Max tokens input (1-4096)
+- Added Start Profiling button that:
+  - Validates prompt is non-empty
+  - Constructs ProfiledGenerateRequest from form state
+  - Calls startProfiling from ProfilingContext
+- Added Stop Profiling button (shown when running)
+- Added status indicator showing:
+  - Animated green dot when profiling
+  - Connection state (Ready/Connecting/Connected/Profiling)
+  - Color-coded status text
+- Integrated with ProfilingContext for state management
+- All form controls properly disabled during profiling
+- Verified TypeScript compilation with npm run build (successful)

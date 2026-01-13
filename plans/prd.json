@@ -759,7 +759,7 @@
       "title": "Frontend - ProfilingControls Component",
       "description": "Create profiling start/stop controls",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Create src/components/profiling/ProfilingControls.tsx",
         "Add model selector dropdown",
