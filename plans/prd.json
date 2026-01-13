@@ -117,7 +117,7 @@
       "title": "Sudoers Configuration for powermetrics",
       "description": "Configure passwordless sudo access for powermetrics",
       "priority": "CRITICAL",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Create setup script to add sudoers entry",
         "Add documentation for manual sudoers setup",

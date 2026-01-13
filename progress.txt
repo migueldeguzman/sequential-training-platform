@@ -17,3 +17,12 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - Created backend/profiling/__init__.py with module documentation
 - Verified Python syntax and TypeScript compilation (npm build successful)
 
+### EP-002: Sudoers Configuration for powermetrics - COMPLETED
+- Created setup_powermetrics.sh script for automated sudoers configuration
+- Added comprehensive README_POWERMETRICS.md documentation
+- Implemented profiling/utils.py with powermetrics verification functions
+- Added verification check to backend startup (main.py lifespan)
+- Added graceful fallback messages when powermetrics unavailable
+- Added /api/profiling/powermetrics/status endpoint
+- Verified Python syntax with py_compile
+

@@ -252,6 +252,11 @@ async def lifespan(app: FastAPI):
     for key in ["json_input", "text_output", "model_output"]:
         paths[key].mkdir(parents=True, exist_ok=True)
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Verify powermetrics access for Energy Profiler
+    from profiling.utils import verify_powermetrics_on_startup
+    verify_powermetrics_on_startup()
+
     yield
     # Shutdown
     if training_state["process"]:
@@ -1554,6 +1559,15 @@ async def export_results(request: ExportRequest):
             "data": "\n".join(lines),
             "filename": f"inference_export_{timestamp}.text"
         }
+
+
+# ==================== PROFILING SYSTEM ENDPOINTS ====================
+
+@app.get("/api/profiling/powermetrics/status")
+async def get_powermetrics_status():
+    """Get powermetrics availability status."""
+    from profiling.utils import get_powermetrics_status
+    return get_powermetrics_status()
 
 
 if __name__ == "__main__":
