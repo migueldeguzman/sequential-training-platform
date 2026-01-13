@@ -891,7 +891,7 @@
       "title": "Frontend - TokenSlider Component",
       "description": "Create slider to scrub through tokens",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Create src/components/profiling/TokenSlider.tsx",
         "Range slider from 0 to total tokens",
