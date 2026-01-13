@@ -954,7 +954,7 @@
       "title": "Frontend - WaterfallChart Component",
       "description": "Create token waterfall chart",
       "priority": "MEDIUM",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Create src/components/profiling/charts/WaterfallChart.tsx",
         "Each column = one token",

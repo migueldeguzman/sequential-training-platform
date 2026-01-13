@@ -2095,3 +2095,31 @@ Implementation details:
 - Energy Profiler appears between "Testing" and "Settings" tabs
 - TypeScript compilation verified with npm run build (successful)
 - Updated PRD: EP-064 passes = true
+
+
+## 2026-01-14 - EP-057: Frontend - WaterfallChart Component - COMPLETED
+
+### EP-057: Frontend - WaterfallChart Component - COMPLETED
+- Created src/components/profiling/charts/WaterfallChart.tsx
+- Implemented Canvas-based rendering for performance with many tokens
+- Each column represents one token in sequence
+- Stacked bars showing energy breakdown by component type:
+  - Attention (blue) - calculated from attention/attn components
+  - MLP (green) - calculated from mlp/ffn components  
+  - LayerNorm (amber) - calculated from norm components
+  - Other (gray) - remaining energy from layers
+- Energy distributed proportionally based on component duration_ms
+- Cumulative energy line overlay (red) with data points
+- Dual Y-axes: left for per-token energy (mJ), right for cumulative energy (mJ)
+- Interactive hover tooltip showing:
+  - Token index and text
+  - Token position in sequence
+  - Duration (ms) and energy (mJ)
+  - Component breakdown with layer count
+- Horizontal scroll support for many tokens (auto-sizing based on token count)
+- Responsive design with auto-calculated column widths (20-60px)
+- Legend showing all component colors and cumulative line
+- X-axis labels showing token indices (smart interval based on token count)
+- High DPI display support with proper canvas scaling
+- TypeScript compilation verified with npm run build (successful)
+- Updated PRD: EP-057 passes = true
