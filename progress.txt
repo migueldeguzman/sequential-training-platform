@@ -1747,3 +1747,48 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
   - Suppressed eslint warning for chartHeight variable in mouse handler
 - Verified TypeScript compilation with npm run build (successful)
 - Updated PRD: EP-046 passes = true
+
+2026-01-14 - EP-047 - COMPLETE - LiveLayerHeatmap Component
+Implemented real-time layer heatmap component for visualizing per-token layer metrics:
+
+Component features:
+- Canvas-based rendering for high performance with large layer counts
+- Y-axis displays layers (0 to N) with clear labeling
+- X-axis displays component names (q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj, input_layernorm, post_attention_layernorm)
+- Configurable metric selection:
+  - Duration (ms) - component execution time
+  - Energy (approx) - approximated from duration
+  - Activation Mean - mean activation values
+  - Activation Max - maximum activation values  
+  - Sparsity - activation sparsity ratio
+- Dynamic color scale:
+  - Blue-cyan-green-yellow-red gradient based on metric values
+  - Automatically scales min to max for each token
+  - Color legend with min/max value labels
+- Interactive hover tooltips:
+  - Shows layer index, component name, and metric value
+  - Intelligently positions to avoid canvas overflow
+  - Crosshair cursor for precision
+- Token information display:
+  - Shows current token position and text in header
+  - Updates on each token_complete event from ProfilingContext
+- Grid visualization:
+  - Clear cell boundaries with configurable padding
+  - Grid lines between layers and components
+  - Rotated X-axis labels for better readability
+- Error handling:
+  - No data available message when no token data present
+  - Waiting for token generation instructional message
+  - Graceful handling of missing components in layers
+- TypeScript type safety:
+  - Uses TokenMetrics, ComponentMetrics interfaces from @/types
+  - Proper typing for all props and state
+  - useCallback for memoized metric accessor functions
+- High DPI display support:
+  - Respects devicePixelRatio for crisp rendering on retina displays
+  - Proper canvas scaling for all screen types
+- Fixed ESLint warnings:
+  - Added getMetricValue and getMetricLabel to useEffect dependencies
+  - Used useCallback for stable function references
+- Verified TypeScript compilation with npm run build (successful, no warnings)
+- Updated PRD: EP-047 passes = true

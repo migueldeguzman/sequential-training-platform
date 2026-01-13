@@ -795,7 +795,7 @@
       "title": "Frontend - LiveLayerHeatmap Component",
       "description": "Create real-time layer heatmap updating per token",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Create src/components/profiling/charts/LiveLayerHeatmap.tsx",
         "Use Canvas for performance",
