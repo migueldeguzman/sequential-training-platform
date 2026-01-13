@@ -2089,6 +2089,213 @@ async def get_profiling_pipeline_breakdown(run_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to retrieve pipeline breakdown: {str(e)}")
 
 
+@app.get("/api/profiling/export/{run_id}")
+async def export_profiling_run(
+    run_id: str,
+    format: str = Query("json", regex="^(json|csv)$")
+):
+    """
+    Export profiling run data in JSON or CSV format.
+
+    Args:
+        run_id: Unique identifier of the profiling run
+        format: Export format - "json" (default) or "csv"
+
+    Returns:
+        - JSON format: Complete nested data structure with all metrics
+        - CSV format: Flattened tables (run metadata + power samples + sections)
+
+    Response headers:
+        - Content-Type: application/json or text/csv
+        - Content-Disposition: attachment; filename="profiling_run_{run_id}.{format}"
+    """
+    import csv
+    import io
+    from fastapi.responses import StreamingResponse
+
+    db = None
+    try:
+        # Initialize database connection
+        db = ProfileDatabase()
+
+        # Verify run exists
+        run = db.get_run(run_id)
+        if not run:
+            raise HTTPException(status_code=404, detail=f"Profiling run {run_id} not found")
+
+        if format == "json":
+            # JSON format: Full nested structure (same as detail endpoint)
+            power_samples = db.get_power_timeline(run_id)
+
+            # Get pipeline sections
+            cursor = db.conn.cursor()
+            cursor.execute("""
+                SELECT * FROM pipeline_sections
+                WHERE run_id = ?
+                ORDER BY start_time_ms
+            """, (run_id,))
+            pipeline_sections = [dict(row) for row in cursor.fetchall()]
+
+            # Get tokens with nested layer and component metrics
+            tokens = db.get_tokens(run_id)
+            for token in tokens:
+                token_id = token['id']
+
+                # Get layer metrics for this token
+                layer_metrics = db.get_layer_metrics(token_id)
+                for layer in layer_metrics:
+                    layer_metric_id = layer['id']
+
+                    # Get component metrics for this layer
+                    component_metrics = db.get_component_metrics(layer_metric_id)
+                    for component in component_metrics:
+                        component_id = component['id']
+
+                        # Get deep operation metrics for this component
+                        cursor.execute("""
+                            SELECT * FROM deep_operation_metrics
+                            WHERE component_metric_id = ?
+                            ORDER BY operation_name
+                        """, (component_id,))
+                        deep_operations = [dict(row) for row in cursor.fetchall()]
+                        component['deep_operations'] = deep_operations
+
+                    layer['components'] = component_metrics
+
+                token['layers'] = layer_metrics
+
+            # Build complete export data
+            export_data = {
+                "run": run,
+                "power_samples": power_samples,
+                "pipeline_sections": pipeline_sections,
+                "tokens": tokens
+            }
+
+            # Convert to JSON string
+            import json
+            json_content = json.dumps(export_data, indent=2, default=str)
+
+            # Create streaming response
+            return StreamingResponse(
+                io.BytesIO(json_content.encode('utf-8')),
+                media_type="application/json",
+                headers={
+                    "Content-Disposition": f'attachment; filename="profiling_run_{run_id}.json"'
+                }
+            )
+
+        else:  # format == "csv"
+            # CSV format: Flattened tables in a single CSV file
+            # Structure: Run metadata, then power samples, then sections
+
+            output = io.StringIO()
+            writer = csv.writer(output)
+
+            # Section 1: Run Metadata
+            writer.writerow(["### RUN METADATA ###"])
+            writer.writerow(["Field", "Value"])
+            for key, value in run.items():
+                writer.writerow([key, value])
+            writer.writerow([])  # Blank line
+
+            # Section 2: Power Samples
+            writer.writerow(["### POWER SAMPLES ###"])
+            power_samples = db.get_power_timeline(run_id)
+            if power_samples:
+                # Header row
+                writer.writerow(power_samples[0].keys())
+                # Data rows
+                for sample in power_samples:
+                    writer.writerow(sample.values())
+            writer.writerow([])  # Blank line
+
+            # Section 3: Pipeline Sections
+            writer.writerow(["### PIPELINE SECTIONS ###"])
+            cursor = db.conn.cursor()
+            cursor.execute("""
+                SELECT * FROM pipeline_sections
+                WHERE run_id = ?
+                ORDER BY start_time_ms
+            """, (run_id,))
+            pipeline_sections = [dict(row) for row in cursor.fetchall()]
+            if pipeline_sections:
+                # Header row
+                writer.writerow(pipeline_sections[0].keys())
+                # Data rows
+                for section in pipeline_sections:
+                    writer.writerow(section.values())
+            writer.writerow([])  # Blank line
+
+            # Section 4: Tokens (if any)
+            writer.writerow(["### TOKENS ###"])
+            tokens = db.get_tokens(run_id)
+            if tokens:
+                # Header row
+                writer.writerow(tokens[0].keys())
+                # Data rows
+                for token in tokens:
+                    writer.writerow(token.values())
+            writer.writerow([])  # Blank line
+
+            # Section 5: Layer Metrics Summary (flattened)
+            writer.writerow(["### LAYER METRICS SUMMARY ###"])
+            cursor.execute("""
+                SELECT lm.*, t.token_index, t.token_text
+                FROM layer_metrics lm
+                LEFT JOIN tokens t ON lm.token_id = t.id
+                WHERE lm.run_id = ?
+                ORDER BY t.token_index, lm.layer_index
+            """, (run_id,))
+            layer_metrics = [dict(row) for row in cursor.fetchall()]
+            if layer_metrics:
+                # Header row
+                writer.writerow(layer_metrics[0].keys())
+                # Data rows
+                for metric in layer_metrics:
+                    writer.writerow(metric.values())
+            writer.writerow([])  # Blank line
+
+            # Section 6: Component Metrics Summary (flattened)
+            writer.writerow(["### COMPONENT METRICS SUMMARY ###"])
+            cursor.execute("""
+                SELECT cm.*, lm.layer_index, t.token_index
+                FROM component_metrics cm
+                LEFT JOIN layer_metrics lm ON cm.layer_metric_id = lm.id
+                LEFT JOIN tokens t ON lm.token_id = t.id
+                WHERE lm.run_id = ?
+                ORDER BY t.token_index, lm.layer_index, cm.component_name
+            """, (run_id,))
+            component_metrics = [dict(row) for row in cursor.fetchall()]
+            if component_metrics:
+                # Header row
+                writer.writerow(component_metrics[0].keys())
+                # Data rows
+                for metric in component_metrics:
+                    writer.writerow(metric.values())
+
+            # Get CSV content
+            csv_content = output.getvalue()
+
+            # Create streaming response
+            return StreamingResponse(
+                io.BytesIO(csv_content.encode('utf-8')),
+                media_type="text/csv",
+                headers={
+                    "Content-Disposition": f'attachment; filename="profiling_run_{run_id}.csv"'
+                }
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to export profiling run {run_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to export profiling run: {str(e)}")
+    finally:
+        if db:
+            db.close()
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

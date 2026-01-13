@@ -574,7 +574,7 @@
       "title": "Profiling Export Endpoint",
       "description": "Create endpoint to export profiling data",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Implement GET /api/profiling/export/{id} endpoint",
         "Add format query param (json/csv)",

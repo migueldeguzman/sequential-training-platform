@@ -1096,3 +1096,47 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - Verified Python syntax with py_compile (no errors)
 - Updated PRD: EP-031 passes = true
 
+### EP-032: Profiling Export Endpoint - COMPLETED
+- Implemented GET /api/profiling/export/{run_id} endpoint in backend/main.py (lines 2092-2296)
+  - Accepts format query parameter with validation: "json" or "csv" (default: "json")
+  - Validates run_id exists and returns 404 if not found
+- JSON export format implementation:
+  - Retrieves complete nested data structure identical to detail endpoint
+  - Includes run metadata, power_samples, pipeline_sections, and tokens
+  - Tokens include nested layer_metrics with component_metrics and deep_operations
+  - Uses json.dumps() with indent=2 for readable formatting
+  - default=str parameter handles datetime and non-JSON-serializable types
+  - Returns StreamingResponse with application/json content type
+  - Content-Disposition header triggers browser download: profiling_run_{run_id}.json
+- CSV export format implementation:
+  - Flattened multi-section CSV format for spreadsheet analysis
+  - Section 1: Run metadata as key-value pairs
+  - Section 2: Power samples table with all measurement columns
+  - Section 3: Pipeline sections table with timing and energy data
+  - Section 4: Tokens table with token-level metrics
+  - Section 5: Layer metrics summary with JOIN to tokens for context
+  - Section 6: Component metrics summary with JOIN to layers and tokens
+  - Uses csv.writer() to generate properly formatted CSV
+  - Each section separated by blank lines for readability
+  - Header rows included for each table section
+  - Returns StreamingResponse with text/csv content type
+  - Content-Disposition header triggers browser download: profiling_run_{run_id}.csv
+- Proper HTTP response headers:
+  - Content-Type: application/json for JSON format
+  - Content-Type: text/csv for CSV format
+  - Content-Disposition: attachment; filename="..." triggers download dialog
+- Comprehensive error handling:
+  - HTTPException for 404 when run not found
+  - HTTPException with 500 status for export failures
+  - Re-raises HTTPException to preserve error codes
+  - Logs all errors with detailed messages
+- Proper resource management:
+  - Closes database connection in finally block
+  - try/except blocks protect against partial export failures
+- StreamingResponse implementation:
+  - Uses io.BytesIO() to create in-memory file stream
+  - Efficient for large exports without loading entire response in memory
+  - Supports both JSON and CSV content with proper encoding (utf-8)
+- Verified Python syntax with py_compile (no errors)
+- Updated PRD: EP-032 passes = true
+
