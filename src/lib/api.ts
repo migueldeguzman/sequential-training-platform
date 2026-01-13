@@ -316,6 +316,81 @@ export const profilingApi = {
     fetchApi<{ success: boolean; message: string; run_id: string }>(`/api/profiling/run/${id}`, {
       method: "DELETE",
     }),
+
+  // Get architectural analysis correlating model features with energy consumption
+  getArchitecturalAnalysis: (filters?: {
+    model_filter?: string;
+    min_params?: number;
+    max_params?: number;
+  }) => {
+    const params = new URLSearchParams();
+    if (filters?.model_filter) params.append("model_filter", filters.model_filter);
+    if (filters?.min_params) params.append("min_params", filters.min_params.toString());
+    if (filters?.max_params) params.append("max_params", filters.max_params.toString());
+
+    const queryString = params.toString();
+    const endpoint = queryString ? `/api/profiling/architectural-analysis?${queryString}` : "/api/profiling/architectural-analysis";
+
+    return fetchApi<{
+      data_points: Array<{
+        run_id: string;
+        model_name: string;
+        num_layers: number;
+        hidden_size: number;
+        intermediate_size: number;
+        num_attention_heads: number;
+        attention_mechanism: string;
+        total_params: number;
+        total_energy_mj: number;
+        energy_per_token_mj: number;
+        tokens_per_joule: number;
+      }>;
+      correlations: {
+        energy_vs_layers?: {
+          coefficient: number | null;
+          p_value: number | null;
+          interpretation: string;
+        };
+        energy_vs_hidden_size?: {
+          coefficient: number | null;
+          p_value: number | null;
+          interpretation: string;
+        };
+        energy_vs_intermediate_size?: {
+          coefficient: number | null;
+          p_value: number | null;
+          interpretation: string;
+        };
+        energy_vs_total_params?: {
+          coefficient: number | null;
+          p_value: number | null;
+          interpretation: string;
+        };
+      };
+      attention_mechanism_comparison: {
+        [mechanism: string]: {
+          count: number;
+          avg_energy_per_token: number;
+          avg_tokens_per_joule: number;
+        };
+      };
+      regression_models: {
+        linear_layers: {
+          slope: number;
+          intercept: number;
+          r_squared: number;
+          description: string;
+        };
+        quadratic_hidden_size: {
+          coefficient: number;
+          intercept: number;
+          r_squared: number;
+          description: string;
+        };
+      };
+      message?: string;
+    }>(endpoint);
+  },
 };
 
 // Combined API export
@@ -337,4 +412,5 @@ export const api = {
   getProfilingPipeline: profilingApi.getProfilingPipeline,
   exportProfilingRun: profilingApi.exportProfilingRun,
   deleteProfilingRun: profilingApi.deleteProfilingRun,
+  getArchitecturalAnalysis: profilingApi.getArchitecturalAnalysis,
 };

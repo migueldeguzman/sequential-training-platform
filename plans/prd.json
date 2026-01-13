@@ -1280,7 +1280,7 @@
       "title": "Architectural Impact Analysis",
       "description": "Analyze how model architecture affects energy consumption",
       "priority": "MEDIUM",
-      "passes": false,
+      "passes": true,
       "reference": "Paper finding: Layers scale linearly, dimensionality scales quadratically with energy",
       "steps": [
         "Create ArchitecturalAnalysis component",

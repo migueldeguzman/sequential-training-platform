@@ -2790,3 +2790,37 @@ Tests: npm run build passed successfully
 
 Reference: TokenPowerBench paper - E_total = E_GPU + E_CPU + E_DRAM + E_Others
 ---
+
+
+2026-01-14 | EP-078 | COMPLETED | Architectural Impact Analysis
+Description: Analyze how model architecture affects energy consumption
+
+Implementation:
+- Backend: Created /api/profiling/architectural-analysis endpoint
+  - Accepts filters: model_filter, min_params, max_params
+  - Calculates correlations using scipy.stats.pearsonr
+  - Energy vs layers (linear relationship expected)
+  - Energy vs hidden_size (quadratic relationship expected) 
+  - Energy vs intermediate_size
+  - Energy vs total_params
+  - Regression models: linear for layers, quadratic for hidden_size
+  - Attention mechanism comparison (MHA vs GQA vs MQA)
+  - Returns R² values for model fits
+
+- Frontend: Created ArchitecturalAnalysis component
+  - Interactive scatter plots with Canvas rendering
+  - 4 plot types: layers, hidden_size, intermediate_size, params
+  - Regression line overlays with R² display
+  - Color-coded by attention mechanism (MHA/GQA/MQA)
+  - Correlation statistics display (coefficient, p-value, interpretation)
+  - Attention mechanism comparison table
+  - Key insights section explaining expected relationships
+
+- API: Added getArchitecturalAnalysis() method to api.ts
+  - Full TypeScript type definitions
+  - ApiResponse wrapper handling
+
+Tests: npm run build passed successfully
+
+Reference: Caravaca et al. 2025 "From Prompts to Power" - Layers scale linearly, dimensionality scales quadratically with energy
+---

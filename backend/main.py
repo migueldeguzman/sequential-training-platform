@@ -2665,6 +2665,311 @@ async def compare_profiling_runs(run_ids: List[str]):
             db.close()
 
 
+@app.get("/api/profiling/architectural-analysis")
+async def get_architectural_analysis(
+    model_filter: Optional[str] = None,
+    min_params: Optional[int] = None,
+    max_params: Optional[int] = None
+):
+    """
+    Analyze how model architecture affects energy consumption.
+
+    Returns correlation analysis showing:
+    - Energy vs num_layers (expect linear relationship)
+    - Energy vs hidden_size (expect quadratic relationship)
+    - Energy vs intermediate_size
+    - Comparison of MHA vs GQA vs MQA energy profiles
+    - Correlation coefficients for each architectural feature
+
+    Inspired by Caravaca et al. 2025 "From Prompts to Power" finding that
+    layers scale linearly while dimensionality scales quadratically with energy.
+
+    Query Parameters:
+        model_filter: Optional substring to filter models by name
+        min_params: Minimum total parameters (filter)
+        max_params: Maximum total parameters (filter)
+
+    Returns:
+        {
+            "data_points": [
+                {
+                    "run_id": str,
+                    "model_name": str,
+                    "num_layers": int,
+                    "hidden_size": int,
+                    "intermediate_size": int,
+                    "num_attention_heads": int,
+                    "attention_mechanism": str,
+                    "total_params": int,
+                    "total_energy_mj": float,
+                    "energy_per_token_mj": float,
+                    "tokens_per_joule": float
+                },
+                ...
+            ],
+            "correlations": {
+                "energy_vs_layers": {
+                    "coefficient": float,
+                    "p_value": float,
+                    "interpretation": str
+                },
+                "energy_vs_hidden_size": {
+                    "coefficient": float,
+                    "p_value": float,
+                    "interpretation": str
+                },
+                "energy_vs_intermediate_size": {
+                    "coefficient": float,
+                    "p_value": float,
+                    "interpretation": str
+                },
+                "energy_vs_total_params": {
+                    "coefficient": float,
+                    "p_value": float,
+                    "interpretation": str
+                }
+            },
+            "attention_mechanism_comparison": {
+                "MHA": {
+                    "count": int,
+                    "avg_energy_per_token": float,
+                    "avg_tokens_per_joule": float
+                },
+                "GQA": {...},
+                "MQA": {...}
+            },
+            "regression_models": {
+                "linear_layers": {
+                    "slope": float,
+                    "intercept": float,
+                    "r_squared": float
+                },
+                "quadratic_hidden_size": {
+                    "coefficient": float,
+                    "intercept": float,
+                    "r_squared": float
+                }
+            }
+        }
+
+    Raises:
+        HTTPException: 500 if analysis fails
+    """
+    db = None
+    try:
+        # Import scipy for correlation analysis
+        try:
+            from scipy.stats import pearsonr
+            import numpy as np
+        except ImportError:
+            raise HTTPException(
+                status_code=500,
+                detail="scipy is required for correlation analysis. Install with: pip install scipy"
+            )
+
+        # Connect to database
+        db = ProfileDatabase()
+
+        # Get all profiling runs with filters
+        all_runs = db.get_runs(
+            model_filter=model_filter,
+            limit=1000  # Get up to 1000 runs for analysis
+        )
+
+        if not all_runs:
+            return {
+                "data_points": [],
+                "correlations": {},
+                "attention_mechanism_comparison": {},
+                "regression_models": {},
+                "message": "No profiling runs found matching criteria"
+            }
+
+        # Extract data points with architectural features
+        data_points = []
+        for run in all_runs:
+            # Filter by parameter count if specified
+            total_params = run.get('total_params', 0)
+            if min_params and total_params < min_params:
+                continue
+            if max_params and total_params > max_params:
+                continue
+
+            # Only include runs with architectural features and valid energy data
+            if (run.get('num_layers') and run.get('hidden_size') and
+                run.get('total_energy_mj') and run.get('token_count')):
+
+                total_tokens = run.get('token_count', 0)
+                energy_per_token = (run['total_energy_mj'] / total_tokens) if total_tokens > 0 else 0
+                tokens_per_joule = (total_tokens * 1000 / run['total_energy_mj']) if run['total_energy_mj'] > 0 else 0
+
+                data_points.append({
+                    "run_id": run['run_id'],
+                    "model_name": run['model_name'],
+                    "num_layers": run.get('num_layers', 0),
+                    "hidden_size": run.get('hidden_size', 0),
+                    "intermediate_size": run.get('intermediate_size', 0),
+                    "num_attention_heads": run.get('num_attention_heads', 0),
+                    "attention_mechanism": run.get('attention_mechanism', 'unknown'),
+                    "total_params": total_params,
+                    "total_energy_mj": run['total_energy_mj'],
+                    "energy_per_token_mj": energy_per_token,
+                    "tokens_per_joule": tokens_per_joule
+                })
+
+        if len(data_points) < 2:
+            return {
+                "data_points": data_points,
+                "correlations": {},
+                "attention_mechanism_comparison": {},
+                "regression_models": {},
+                "message": "Insufficient data points for correlation analysis (minimum 2 required)"
+            }
+
+        # Extract arrays for correlation analysis
+        num_layers_arr = np.array([d['num_layers'] for d in data_points])
+        hidden_size_arr = np.array([d['hidden_size'] for d in data_points])
+        intermediate_size_arr = np.array([d['intermediate_size'] for d in data_points])
+        total_params_arr = np.array([d['total_params'] for d in data_points])
+        energy_per_token_arr = np.array([d['energy_per_token_mj'] for d in data_points])
+
+        # Calculate correlations
+        correlations = {}
+
+        # Energy vs num_layers (expect linear relationship)
+        if len(set(num_layers_arr)) > 1:
+            corr_layers, p_layers = pearsonr(num_layers_arr, energy_per_token_arr)
+            correlations['energy_vs_layers'] = {
+                "coefficient": float(corr_layers),
+                "p_value": float(p_layers),
+                "interpretation": "strong positive" if corr_layers > 0.7 else "moderate positive" if corr_layers > 0.4 else "weak"
+            }
+
+            # Linear regression for layers
+            if len(num_layers_arr) >= 2:
+                poly_layers = np.polyfit(num_layers_arr, energy_per_token_arr, 1)
+                predictions_layers = np.polyval(poly_layers, num_layers_arr)
+                ss_tot_layers = np.sum((energy_per_token_arr - np.mean(energy_per_token_arr)) ** 2)
+                ss_res_layers = np.sum((energy_per_token_arr - predictions_layers) ** 2)
+                r_squared_layers = 1 - (ss_res_layers / ss_tot_layers) if ss_tot_layers > 0 else 0
+        else:
+            correlations['energy_vs_layers'] = {
+                "coefficient": None,
+                "p_value": None,
+                "interpretation": "insufficient variance in num_layers"
+            }
+            r_squared_layers = 0
+            poly_layers = [0, 0]
+
+        # Energy vs hidden_size (expect quadratic relationship)
+        if len(set(hidden_size_arr)) > 1:
+            # Use hidden_size^2 for correlation (testing quadratic hypothesis)
+            hidden_size_squared = hidden_size_arr ** 2
+            corr_hidden, p_hidden = pearsonr(hidden_size_squared, energy_per_token_arr)
+            correlations['energy_vs_hidden_size'] = {
+                "coefficient": float(corr_hidden),
+                "p_value": float(p_hidden),
+                "interpretation": "strong positive" if corr_hidden > 0.7 else "moderate positive" if corr_hidden > 0.4 else "weak"
+            }
+
+            # Quadratic regression for hidden_size
+            if len(hidden_size_arr) >= 2:
+                # Fit: energy = a * hidden_size^2 + b
+                A = np.vstack([hidden_size_squared, np.ones(len(hidden_size_squared))]).T
+                coeffs_hidden = np.linalg.lstsq(A, energy_per_token_arr, rcond=None)[0]
+                predictions_hidden = coeffs_hidden[0] * hidden_size_squared + coeffs_hidden[1]
+                ss_tot_hidden = np.sum((energy_per_token_arr - np.mean(energy_per_token_arr)) ** 2)
+                ss_res_hidden = np.sum((energy_per_token_arr - predictions_hidden) ** 2)
+                r_squared_hidden = 1 - (ss_res_hidden / ss_tot_hidden) if ss_tot_hidden > 0 else 0
+        else:
+            correlations['energy_vs_hidden_size'] = {
+                "coefficient": None,
+                "p_value": None,
+                "interpretation": "insufficient variance in hidden_size"
+            }
+            r_squared_hidden = 0
+            coeffs_hidden = [0, 0]
+
+        # Energy vs intermediate_size
+        if len(set(intermediate_size_arr)) > 1:
+            corr_intermediate, p_intermediate = pearsonr(intermediate_size_arr, energy_per_token_arr)
+            correlations['energy_vs_intermediate_size'] = {
+                "coefficient": float(corr_intermediate),
+                "p_value": float(p_intermediate),
+                "interpretation": "strong positive" if corr_intermediate > 0.7 else "moderate positive" if corr_intermediate > 0.4 else "weak"
+            }
+        else:
+            correlations['energy_vs_intermediate_size'] = {
+                "coefficient": None,
+                "p_value": None,
+                "interpretation": "insufficient variance in intermediate_size"
+            }
+
+        # Energy vs total_params
+        if len(set(total_params_arr)) > 1:
+            corr_params, p_params = pearsonr(total_params_arr, energy_per_token_arr)
+            correlations['energy_vs_total_params'] = {
+                "coefficient": float(corr_params),
+                "p_value": float(p_params),
+                "interpretation": "strong positive" if corr_params > 0.7 else "moderate positive" if corr_params > 0.4 else "weak"
+            }
+        else:
+            correlations['energy_vs_total_params'] = {
+                "coefficient": None,
+                "p_value": None,
+                "interpretation": "insufficient variance in total_params"
+            }
+
+        # Compare attention mechanisms
+        attention_comparison = {}
+        mechanisms = set(d['attention_mechanism'] for d in data_points)
+        for mechanism in mechanisms:
+            mechanism_data = [d for d in data_points if d['attention_mechanism'] == mechanism]
+            if mechanism_data:
+                avg_energy = np.mean([d['energy_per_token_mj'] for d in mechanism_data])
+                avg_efficiency = np.mean([d['tokens_per_joule'] for d in mechanism_data])
+                attention_comparison[mechanism] = {
+                    "count": len(mechanism_data),
+                    "avg_energy_per_token": float(avg_energy),
+                    "avg_tokens_per_joule": float(avg_efficiency)
+                }
+
+        # Build regression models
+        regression_models = {
+            "linear_layers": {
+                "slope": float(poly_layers[0]) if len(poly_layers) > 0 else 0,
+                "intercept": float(poly_layers[1]) if len(poly_layers) > 1 else 0,
+                "r_squared": float(r_squared_layers),
+                "description": "energy_per_token = slope × num_layers + intercept"
+            },
+            "quadratic_hidden_size": {
+                "coefficient": float(coeffs_hidden[0]) if len(coeffs_hidden) > 0 else 0,
+                "intercept": float(coeffs_hidden[1]) if len(coeffs_hidden) > 1 else 0,
+                "r_squared": float(r_squared_hidden),
+                "description": "energy_per_token = coefficient × hidden_size² + intercept"
+            }
+        }
+
+        return {
+            "data_points": data_points,
+            "correlations": correlations,
+            "attention_mechanism_comparison": attention_comparison,
+            "regression_models": regression_models
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to perform architectural analysis: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to perform architectural analysis: {str(e)}"
+        )
+    finally:
+        if db:
+            db.close()
+
+
 # WebSocket connection manager for profiling streams
 class ProfilingConnectionManager:
     """Manages WebSocket connections for real-time profiling data streaming."""
