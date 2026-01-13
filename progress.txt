@@ -590,3 +590,56 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - Verified Python syntax with py_compile (no errors)
 - Updated PRD: EP-021 passes = true
 
+### EP-022: InferencePipelineProfiler - Prefill Phase - COMPLETED
+- Implemented prefill phase profiling helper methods in InferencePipelineProfiler
+- Added profile_embedding_lookup() method (lines 396-416):
+  - Wraps embedding lookup function with section timing
+  - Uses session.section("embedding_lookup", "prefill") context manager
+  - Accepts arbitrary embedding function with *args and **kwargs for flexibility
+  - Returns embedding tensor for pipeline continuation
+  - Comprehensive docstring with usage example showing model.embed_tokens
+- Added profile_position_embedding() method (lines 418-438):
+  - Wraps position embedding function with section timing
+  - Uses session.section("position_embedding", "prefill") context manager
+  - Supports various positional encoding implementations
+  - Returns result with position embeddings added
+  - Comprehensive docstring with usage example
+- Added profile_transformer_layers() method (lines 440-463):
+  - Wraps transformer layers forward pass with section timing
+  - Uses session.section("layers", "prefill") context manager
+  - LayerProfiler hooks automatically capture detailed per-layer metrics
+  - Returns output from transformer layers
+  - Comprehensive docstring explaining hook integration
+- Added profile_final_layernorm() method (lines 465-485):
+  - Wraps final layer normalization with section timing
+  - Uses session.section("final_layernorm", "prefill") context manager
+  - Returns normalized output for LM head projection
+  - Comprehensive docstring with usage example
+- Added profile_lm_head() method (lines 487-509):
+  - Wraps language model head projection with section timing
+  - Uses session.section("lm_head", "prefill") context manager
+  - Projects hidden states to vocabulary logits
+  - Returns vocabulary logits for token sampling
+  - Comprehensive docstring with usage example
+- Added profile_kv_cache_store() method (lines 511-533):
+  - Wraps KV-cache storage with section timing
+  - Uses session.section("kv_cache_store", "prefill") context manager
+  - Captures time to store keys and values from prefill
+  - Accepts arbitrary store function with *args and **kwargs
+  - Comprehensive docstring with usage example
+- Added profile_prefill() convenience method (lines 535-576):
+  - Wraps entire prefill forward pass with automatic section breakdown
+  - Uses session.section("prefill_complete", "prefill") context manager
+  - Resets LayerProfiler for fresh metrics capture
+  - Runs model forward pass with return_dict=True
+  - LayerProfiler hooks automatically capture per-layer and per-component metrics
+  - Retrieves and logs layer timings after forward pass
+  - Returns logits by default or full output if return_full_output=True
+  - Provides convenience API for standard prefill profiling
+  - Comprehensive docstring with usage examples
+- All methods leverage existing section() context manager for automatic energy correlation
+- Prefill metrics automatically stored in session.sections list
+- Database integration already handled by existing _save_run_to_database() method
+- Verified Python syntax with py_compile (no errors)
+- Updated PRD: EP-022 passes = true
+

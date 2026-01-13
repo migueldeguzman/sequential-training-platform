@@ -392,6 +392,189 @@ class InferencePipelineProfiler:
             result = init_func(*args, **kwargs)
         return result
 
+    # Prefill Phase Profiling Helpers
+    def profile_embedding_lookup(self, session: ProfilingSession, embedding_func, *args, **kwargs):
+        """
+        Profile embedding lookup with automatic section timing.
+
+        Args:
+            session: Active ProfilingSession from run() context manager
+            embedding_func: Function that performs embedding lookup (e.g., model.embed_tokens)
+            *args: Positional arguments for embedding_func
+            **kwargs: Keyword arguments for embedding_func
+
+        Returns:
+            Embedding tensor
+
+        Example:
+            with profiler.run("Hello", "llama-7b") as session:
+                tokens = profiler.profile_tokenization(session, tokenizer, prompt)
+                embeddings = profiler.profile_embedding_lookup(session, model.embed_tokens, tokens)
+        """
+        with session.section("embedding_lookup", "prefill"):
+            result = embedding_func(*args, **kwargs)
+        return result
+
+    def profile_position_embedding(self, session: ProfilingSession, position_func, *args, **kwargs):
+        """
+        Profile position embedding with automatic section timing.
+
+        Args:
+            session: Active ProfilingSession from run() context manager
+            position_func: Function that adds positional encoding
+            *args: Positional arguments for position_func
+            **kwargs: Keyword arguments for position_func
+
+        Returns:
+            Result with position embeddings added
+
+        Example:
+            with profiler.run("Hello", "llama-7b") as session:
+                embeddings = profiler.profile_embedding_lookup(session, model.embed_tokens, tokens)
+                embeddings = profiler.profile_position_embedding(session, model.add_position_embeddings, embeddings)
+        """
+        with session.section("position_embedding", "prefill"):
+            result = position_func(*args, **kwargs)
+        return result
+
+    def profile_transformer_layers(self, session: ProfilingSession, layers_func, *args, **kwargs):
+        """
+        Profile all transformer layers during prefill with automatic section timing.
+
+        This wraps the forward pass through all transformer layers. The LayerProfiler hooks
+        will capture detailed metrics for each individual layer and component.
+
+        Args:
+            session: Active ProfilingSession from run() context manager
+            layers_func: Function that runs transformer layers (e.g., model.layers forward)
+            *args: Positional arguments for layers_func
+            **kwargs: Keyword arguments for layers_func
+
+        Returns:
+            Output from transformer layers
+
+        Example:
+            with profiler.run("Hello", "llama-7b") as session:
+                embeddings = profiler.profile_embedding_lookup(session, model.embed_tokens, tokens)
+                hidden_states = profiler.profile_transformer_layers(session, model.layers, embeddings)
+        """
+        with session.section("layers", "prefill"):
+            result = layers_func(*args, **kwargs)
+        return result
+
+    def profile_final_layernorm(self, session: ProfilingSession, layernorm_func, *args, **kwargs):
+        """
+        Profile final layer normalization with automatic section timing.
+
+        Args:
+            session: Active ProfilingSession from run() context manager
+            layernorm_func: Function that applies final layer norm
+            *args: Positional arguments for layernorm_func
+            **kwargs: Keyword arguments for layernorm_func
+
+        Returns:
+            Normalized output
+
+        Example:
+            with profiler.run("Hello", "llama-7b") as session:
+                hidden_states = profiler.profile_transformer_layers(session, model.layers, embeddings)
+                normalized = profiler.profile_final_layernorm(session, model.norm, hidden_states)
+        """
+        with session.section("final_layernorm", "prefill"):
+            result = layernorm_func(*args, **kwargs)
+        return result
+
+    def profile_lm_head(self, session: ProfilingSession, lm_head_func, *args, **kwargs):
+        """
+        Profile language model head projection with automatic section timing.
+
+        This projects hidden states to vocabulary logits.
+
+        Args:
+            session: Active ProfilingSession from run() context manager
+            lm_head_func: Function that projects to vocabulary (e.g., model.lm_head)
+            *args: Positional arguments for lm_head_func
+            **kwargs: Keyword arguments for lm_head_func
+
+        Returns:
+            Vocabulary logits
+
+        Example:
+            with profiler.run("Hello", "llama-7b") as session:
+                normalized = profiler.profile_final_layernorm(session, model.norm, hidden_states)
+                logits = profiler.profile_lm_head(session, model.lm_head, normalized)
+        """
+        with session.section("lm_head", "prefill"):
+            result = lm_head_func(*args, **kwargs)
+        return result
+
+    def profile_kv_cache_store(self, session: ProfilingSession, store_func, *args, **kwargs):
+        """
+        Profile KV-cache storage during prefill with automatic section timing.
+
+        This captures the time to store keys and values from prefill for later decode steps.
+
+        Args:
+            session: Active ProfilingSession from run() context manager
+            store_func: Function that stores KV-cache
+            *args: Positional arguments for store_func
+            **kwargs: Keyword arguments for store_func
+
+        Returns:
+            Result from store_func
+
+        Example:
+            with profiler.run("Hello", "llama-7b") as session:
+                logits = profiler.profile_lm_head(session, model.lm_head, normalized)
+                profiler.profile_kv_cache_store(session, cache.store, keys, values)
+        """
+        with session.section("kv_cache_store", "prefill"):
+            result = store_func(*args, **kwargs)
+        return result
+
+    def profile_prefill(
+        self,
+        session: ProfilingSession,
+        model,
+        input_ids,
+        return_full_output: bool = False
+    ):
+        """
+        Profile the entire prefill phase with automatic section breakdown.
+
+        This is a convenience method that wraps a complete prefill forward pass and
+        automatically profiles all major sections. For finer-grained control, use
+        the individual profile_* methods instead.
+
+        Args:
+            session: Active ProfilingSession from run() context manager
+            model: The transformer model
+            input_ids: Input token IDs tensor
+            return_full_output: If True, return full model output; if False, return only logits
+
+        Returns:
+            Model output (logits or full output depending on return_full_output)
+
+        Example:
+            with profiler.run("Hello", "llama-7b") as session:
+                tokens = profiler.profile_tokenization(session, tokenizer, prompt)
+                logits = profiler.profile_prefill(session, model, tokens)
+        """
+        with session.section("prefill_complete", "prefill"):
+            # Reset layer profiler for fresh metrics
+            if session.layer_profiler:
+                session.layer_profiler.reset()
+
+            # Run forward pass (hooks will capture layer/component metrics)
+            output = model(input_ids, return_dict=True)
+
+            # Get layer metrics if available
+            if session.layer_profiler:
+                layer_timings = session.layer_profiler.get_timings()
+                logger.debug(f"Captured {len(layer_timings)} layer timings during prefill")
+
+        return output if return_full_output else output.logits
+
 
 # Add section() method to ProfilingSession
 def _session_section(self, section_name: str, phase: str):

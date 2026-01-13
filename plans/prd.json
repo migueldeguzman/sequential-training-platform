@@ -421,7 +421,7 @@
       "title": "InferencePipelineProfiler - Prefill Phase",
       "description": "Profile prefill phase (prompt processing)",
       "priority": "CRITICAL",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Wrap embedding lookup with section timing",
         "Wrap position embedding with section timing",
