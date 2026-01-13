@@ -601,7 +601,7 @@
       "title": "WebSocket Profiling Endpoint - Setup",
       "description": "Create WebSocket endpoint for real-time streaming",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Implement /ws/profiling WebSocket endpoint",
         "Handle client connection/disconnection",

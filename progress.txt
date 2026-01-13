@@ -1175,3 +1175,53 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - Verified Python syntax with py_compile (no errors)
 - Updated PRD: EP-033 passes = true
 
+### EP-034: WebSocket Profiling Endpoint - Setup - COMPLETED
+- Implemented /ws/profiling WebSocket endpoint in backend/main.py (lines 2437-2506)
+  - Full-duplex WebSocket connection for real-time profiling data streaming
+  - Accepts connections at ws://localhost:8000/ws/profiling
+  - Generates unique client ID (UUID4) for each connection
+  - Handles client connection lifecycle: connect -> stream -> disconnect
+- Created ProfilingConnectionManager class (lines 2358-2417)
+  - Manages multiple concurrent WebSocket connections
+  - Maintains list of active_connections
+  - Implements per-client message queues using asyncio.Queue()
+  - Methods:
+    * connect(websocket, client_id): Accept and register new connection
+    * disconnect(websocket, client_id): Remove connection and cleanup queue
+    * send_message(message, client_id): Send to specific client or broadcast
+    * broadcast(message): Send message to all connected clients
+  - Thread-safe queue-based architecture for reliable message delivery
+  - Comprehensive logging for connection events
+- Created ProfilingMessageType class (lines 2421-2430)
+  - Defines message type enumeration for profiling events:
+    * POWER_SAMPLE: Power measurement samples
+    * SECTION_START: Pipeline section start events
+    * SECTION_END: Pipeline section completion events
+    * TOKEN_COMPLETE: Token generation completion events
+    * LAYER_METRICS: Per-layer profiling metrics
+    * COMPONENT_METRICS: Per-component profiling metrics
+    * INFERENCE_COMPLETE: Inference completion summary
+    * ERROR: Error messages
+- Implemented _send_messages_to_client() background task (lines 2509-2536)
+  - Runs concurrently with WebSocket receive loop
+  - Pulls messages from client-specific queue
+  - Sends messages as JSON via websocket.send_json()
+  - Graceful error handling for send failures
+  - Proper cancellation handling with asyncio.CancelledError
+- Message format standardized as:
+  {
+    "type": "message_type",
+    "timestamp": float,
+    "data": {...}
+  }
+- WebSocket endpoint features:
+  - Bi-directional communication (can receive client messages)
+  - Handles WebSocketDisconnect exceptions gracefully
+  - JSON parsing with error handling for invalid client messages
+  - Proper cleanup in finally block (disconnect, cancel sender task)
+  - Comprehensive error logging throughout lifecycle
+- Global profiling_manager instance for application-wide access
+- Ready for integration with InferencePipelineProfiler for streaming events
+- Verified Python syntax with py_compile (no errors)
+- Updated PRD: EP-034 passes = true
+

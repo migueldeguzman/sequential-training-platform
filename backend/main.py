@@ -2354,6 +2354,188 @@ async def delete_profiling_run(run_id: str):
             db.close()
 
 
+# WebSocket connection manager for profiling streams
+class ProfilingConnectionManager:
+    """Manages WebSocket connections for real-time profiling data streaming."""
+
+    def __init__(self):
+        """Initialize connection manager with active connections list."""
+        self.active_connections: List[WebSocket] = []
+        self.message_queues: dict = {}
+
+    async def connect(self, websocket: WebSocket, client_id: str):
+        """
+        Accept and register a new WebSocket connection.
+
+        Args:
+            websocket: The WebSocket connection to register
+            client_id: Unique identifier for this client connection
+        """
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        self.message_queues[client_id] = asyncio.Queue()
+        logger.info(f"WebSocket client {client_id} connected. Total connections: {len(self.active_connections)}")
+
+    def disconnect(self, websocket: WebSocket, client_id: str):
+        """
+        Remove a WebSocket connection from active connections.
+
+        Args:
+            websocket: The WebSocket connection to remove
+            client_id: Unique identifier for this client connection
+        """
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+        if client_id in self.message_queues:
+            del self.message_queues[client_id]
+        logger.info(f"WebSocket client {client_id} disconnected. Total connections: {len(self.active_connections)}")
+
+    async def send_message(self, message: dict, client_id: str = None):
+        """
+        Send a message to a specific client or broadcast to all clients.
+
+        Args:
+            message: Dictionary message to send (will be JSON-encoded)
+            client_id: Optional client ID. If None, broadcasts to all clients
+        """
+        if client_id:
+            # Send to specific client
+            if client_id in self.message_queues:
+                await self.message_queues[client_id].put(message)
+        else:
+            # Broadcast to all clients
+            for queue_id in self.message_queues:
+                await self.message_queues[queue_id].put(message)
+
+    async def broadcast(self, message: dict):
+        """
+        Broadcast a message to all connected clients.
+
+        Args:
+            message: Dictionary message to broadcast (will be JSON-encoded)
+        """
+        await self.send_message(message, client_id=None)
+
+
+# Message type definitions for WebSocket profiling events
+class ProfilingMessageType:
+    """Enumeration of message types for profiling WebSocket events."""
+    POWER_SAMPLE = "power_sample"
+    SECTION_START = "section_start"
+    SECTION_END = "section_end"
+    TOKEN_COMPLETE = "token_complete"
+    LAYER_METRICS = "layer_metrics"
+    COMPONENT_METRICS = "component_metrics"
+    INFERENCE_COMPLETE = "inference_complete"
+    ERROR = "error"
+
+
+# Global connection manager instance
+profiling_manager = ProfilingConnectionManager()
+
+
+@app.websocket("/ws/profiling")
+async def websocket_profiling_endpoint(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time profiling data streaming.
+
+    Streams profiling events during inference including:
+    - Power samples (100ms intervals)
+    - Section start/end events
+    - Token generation events
+    - Layer and component metrics
+    - Inference completion summary
+
+    Message format:
+    {
+        "type": "message_type",
+        "timestamp": float,
+        "data": {...}
+    }
+
+    Usage:
+        Connect to ws://localhost:8000/ws/profiling
+        Receive JSON messages with profiling events in real-time
+    """
+    # Generate unique client ID
+    import uuid
+    client_id = str(uuid.uuid4())
+
+    await profiling_manager.connect(websocket, client_id)
+
+    try:
+        # Start message sender task
+        sender_task = asyncio.create_task(
+            _send_messages_to_client(websocket, client_id)
+        )
+
+        # Keep connection alive and handle incoming messages
+        while True:
+            try:
+                # Receive messages from client (heartbeat, config, etc.)
+                data = await websocket.receive_text()
+                message = json.loads(data)
+
+                # Handle client messages (e.g., config updates, start/stop requests)
+                logger.info(f"Received message from client {client_id}: {message.get('type', 'unknown')}")
+
+            except WebSocketDisconnect:
+                logger.info(f"WebSocket client {client_id} disconnected")
+                break
+            except json.JSONDecodeError:
+                logger.warning(f"Invalid JSON from client {client_id}")
+                await profiling_manager.send_message(
+                    {
+                        "type": ProfilingMessageType.ERROR,
+                        "timestamp": datetime.now().timestamp(),
+                        "data": {"error": "Invalid JSON format"}
+                    },
+                    client_id=client_id
+                )
+
+    except Exception as e:
+        logger.error(f"WebSocket error for client {client_id}: {str(e)}")
+
+    finally:
+        # Clean up
+        profiling_manager.disconnect(websocket, client_id)
+        sender_task.cancel()
+        try:
+            await sender_task
+        except asyncio.CancelledError:
+            pass
+
+
+async def _send_messages_to_client(websocket: WebSocket, client_id: str):
+    """
+    Background task to send queued messages to a specific WebSocket client.
+
+    Args:
+        websocket: The WebSocket connection to send messages to
+        client_id: Unique identifier for this client
+    """
+    try:
+        queue = profiling_manager.message_queues.get(client_id)
+        if not queue:
+            return
+
+        while True:
+            # Wait for message from queue
+            message = await queue.get()
+
+            # Send message as JSON
+            try:
+                await websocket.send_json(message)
+            except Exception as e:
+                logger.error(f"Failed to send message to client {client_id}: {str(e)}")
+                break
+
+    except asyncio.CancelledError:
+        logger.info(f"Message sender task cancelled for client {client_id}")
+    except Exception as e:
+        logger.error(f"Error in message sender for client {client_id}: {str(e)}")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
