@@ -805,3 +805,184 @@ class DeepAttentionProfiler:
         """Context manager exit - removes patches."""
         self.unpatch()
         return False
+
+
+class InstrumentedModelWrapper(nn.Module):
+    """
+    Alternative approach to deep profiling via model wrapping (EP-018).
+
+    This wrapper intercepts layer calls at a higher level than monkey-patching,
+    providing a cleaner API and easier integration/cleanup. Unlike monkey-patching
+    which modifies module forward methods, this wrapper acts as a proxy.
+
+    Tradeoffs vs Monkey-Patching:
+
+    Wrapper Advantages:
+    - Cleaner API: No modification of original model
+    - Easier cleanup: Just unwrap, no state restoration needed
+    - Safer: Original model remains untouched
+    - Better for multiple profiling sessions
+
+    Monkey-Patch Advantages:
+    - Works with any model architecture without wrapper integration
+    - Can intercept at lower level (individual operations)
+    - No need to modify inference code to use wrapper
+
+    Usage:
+        wrapped_model = InstrumentedModelWrapper(model, profiling_depth='deep')
+        output = wrapped_model(input)
+        metrics = wrapped_model.get_metrics()
+    """
+
+    def __init__(self, model: nn.Module, profiling_depth: str = 'module'):
+        """
+        Initialize the instrumented model wrapper.
+
+        Args:
+            model: The PyTorch model to wrap
+            profiling_depth: Either 'module' or 'deep'
+                - 'module': Only time overall module calls (lightweight)
+                - 'deep': Time individual operations within modules (detailed)
+        """
+        super().__init__()
+        self.model = model
+        self.profiling_depth = profiling_depth
+        self.deep_profiler = None
+
+        # If deep profiling requested, create a DeepAttentionProfiler
+        if profiling_depth == 'deep':
+            self.deep_profiler = DeepAttentionProfiler(model)
+            self.deep_profiler.patch()
+
+        # For module-level profiling, track layer timings
+        self.layer_timings: List[Dict[str, Any]] = []
+        self.metrics_lock = threading.Lock()
+
+    def forward(self, *args, **kwargs):
+        """
+        Forward pass with profiling.
+
+        Intercepts the forward pass to collect timing and metrics
+        at the appropriate granularity based on profiling_depth.
+        """
+        if self.profiling_depth == 'module':
+            # Module-level profiling: time the overall forward pass
+            start_time = time.perf_counter()
+
+            # Synchronize for accurate timing on Apple Silicon
+            if torch.backends.mps.is_available():
+                torch.mps.synchronize()
+
+            # Call original forward
+            result = self.model(*args, **kwargs)
+
+            # Synchronize after
+            if torch.backends.mps.is_available():
+                torch.mps.synchronize()
+
+            end_time = time.perf_counter()
+            duration_ms = (end_time - start_time) * 1000
+
+            # Store timing
+            with self.metrics_lock:
+                self.layer_timings.append({
+                    'type': 'model_forward',
+                    'duration_ms': duration_ms
+                })
+
+            return result
+
+        else:  # profiling_depth == 'deep'
+            # Deep profiling: rely on DeepAttentionProfiler monkey-patching
+            # which captures detailed operation timings
+            result = self.model(*args, **kwargs)
+            return result
+
+    def get_metrics(self) -> Dict[str, Any]:
+        """
+        Get all collected metrics based on profiling depth.
+
+        Returns:
+            Dictionary containing metrics appropriate for profiling depth:
+            - 'module': layer_timings list
+            - 'deep': attention_ops, mlp_ops, layernorm_ops from DeepAttentionProfiler
+        """
+        if self.profiling_depth == 'module':
+            with self.metrics_lock:
+                return {
+                    'profiling_depth': 'module',
+                    'layer_timings': self.layer_timings.copy()
+                }
+        else:  # deep
+            return {
+                'profiling_depth': 'deep',
+                'attention_ops': self.deep_profiler.get_metrics() if self.deep_profiler else [],
+                'mlp_ops': self.deep_profiler.get_mlp_metrics() if self.deep_profiler else [],
+                'layernorm_ops': self.deep_profiler.get_layernorm_metrics() if self.deep_profiler else []
+            }
+
+    def reset_metrics(self):
+        """Reset all collected metrics."""
+        with self.metrics_lock:
+            self.layer_timings.clear()
+
+        if self.deep_profiler:
+            self.deep_profiler.reset()
+
+    def cleanup(self):
+        """Clean up profiling instrumentation."""
+        if self.deep_profiler:
+            self.deep_profiler.unpatch()
+            self.deep_profiler = None
+
+    def __del__(self):
+        """Destructor to ensure cleanup."""
+        self.cleanup()
+
+
+def create_profiled_model(
+    model: nn.Module,
+    profiling_depth: str = 'module',
+    use_wrapper: bool = True
+) -> tuple:
+    """
+    Factory function to create a profiled model using either wrapper or monkey-patch approach.
+
+    Args:
+        model: The PyTorch model to profile
+        profiling_depth: Either 'module' or 'deep'
+        use_wrapper: If True, use InstrumentedModelWrapper; if False, use monkey-patching
+
+    Returns:
+        Tuple of (profiled_model, profiler_object)
+        - profiled_model: The model to use for inference (wrapper or original)
+        - profiler_object: Object to retrieve metrics from (wrapper or DeepAttentionProfiler)
+
+    Examples:
+        # Using wrapper (recommended for cleaner API)
+        wrapped_model, profiler = create_profiled_model(model, profiling_depth='deep', use_wrapper=True)
+        output = wrapped_model(input)
+        metrics = profiler.get_metrics()
+        profiler.cleanup()
+
+        # Using monkey-patch (for compatibility with existing code)
+        model, profiler = create_profiled_model(model, profiling_depth='deep', use_wrapper=False)
+        profiler.patch()
+        output = model(input)  # Uses patched model
+        metrics = profiler.get_metrics()
+        profiler.unpatch()
+    """
+    if use_wrapper:
+        # Use wrapper approach
+        wrapped_model = InstrumentedModelWrapper(model, profiling_depth=profiling_depth)
+        return wrapped_model, wrapped_model
+    else:
+        # Use monkey-patch approach
+        if profiling_depth == 'deep':
+            profiler = DeepAttentionProfiler(model)
+            return model, profiler
+        else:
+            # For module-level profiling without wrapper, use LayerProfiler
+            from .layer_profiler import LayerProfiler
+            profiler = LayerProfiler(model)
+            return model, profiler

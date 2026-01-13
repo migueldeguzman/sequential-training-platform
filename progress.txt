@@ -451,3 +451,37 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - Verified Python syntax with py_compile (no errors)
 - Updated PRD: EP-017 passes = true
 
+### EP-018: DeepAttentionProfiler - Custom Wrapper Approach - COMPLETED
+- Created InstrumentedModelWrapper class as alternative to monkey-patching (lines 810-940)
+  - Acts as proxy wrapper around original model without modifying it
+  - Supports both 'module' and 'deep' profiling_depth configuration
+  - Cleaner API: no modification of original model state
+  - Easier cleanup: just unwrap, no state restoration needed
+  - Safer: original model remains untouched throughout profiling
+- Implemented profiling_depth configuration flag with two modes:
+  - 'module': Lightweight timing of overall forward pass only
+  - 'deep': Detailed operation-level profiling via DeepAttentionProfiler
+- Implemented forward() method to intercept layer calls
+  - Module mode: times overall model forward pass with synchronization
+  - Deep mode: delegates to underlying DeepAttentionProfiler monkey-patches
+  - Uses torch.mps.synchronize() on Apple Silicon for accurate timing
+  - Thread-safe metric storage with threading.Lock
+- Implemented get_metrics() to retrieve profiling data
+  - Returns dictionary appropriate for profiling depth
+  - Module mode: returns layer_timings list
+  - Deep mode: returns attention_ops, mlp_ops, layernorm_ops from DeepAttentionProfiler
+- Implemented reset_metrics() to clear all collected metrics
+- Implemented cleanup() to properly remove instrumentation
+- Added __del__ destructor to ensure cleanup on garbage collection
+- Created create_profiled_model() factory function (lines 943-988)
+  - Unified API to create profiled models with either approach
+  - Parameters: model, profiling_depth ('module'|'deep'), use_wrapper (True|False)
+  - Returns tuple of (profiled_model, profiler_object)
+  - Supports both wrapper and monkey-patch approaches via config flag
+  - Includes comprehensive usage examples in docstring
+- Documented tradeoffs between wrapper vs monkey-patch approaches:
+  - Wrapper advantages: cleaner API, easier cleanup, safer, better for multiple sessions
+  - Monkey-patch advantages: works with any architecture, lower-level interception, no code changes
+- Verified Python syntax with py_compile (no errors)
+- Updated PRD: EP-018 passes = true
+

@@ -365,7 +365,7 @@
       "title": "DeepAttentionProfiler - Custom Wrapper Approach",
       "description": "Alternative deep profiling via model wrapper",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Create InstrumentedModelWrapper class",
         "Override forward to intercept layer calls",
