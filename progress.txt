@@ -1225,3 +1225,49 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - Verified Python syntax with py_compile (no errors)
 - Updated PRD: EP-034 passes = true
 
+### EP-035: WebSocket Profiling - Power Streaming - COMPLETED
+- Enhanced InferencePipelineProfiler to support real-time power sample streaming
+- Added power_sample_callback parameter to __init__ (pipeline_profiler.py:102)
+  - Optional callback function for streaming power samples
+  - Callback signature: callback(sample: PowerSample)
+- Implemented _stream_power_samples() background thread method (lines 128-160)
+  - Polls PowerMonitor for new samples at 100ms intervals
+  - Detects and streams only new samples since last check
+  - Invokes callback for each new PowerSample
+  - Graceful error handling prevents callback failures from affecting profiling
+  - Runs continuously while _streaming_active flag is True
+- Enhanced run() context manager to manage streaming lifecycle:
+  - Starts streaming thread when power_sample_callback provided (lines 237-246)
+  - Creates daemon thread named "PowerSampleStreaming"
+  - Stops streaming thread in finally block (lines 271-276)
+  - Waits for thread completion with 1-second timeout
+  - Ensures cleanup even on exceptions
+- Integrated WebSocket streaming with /api/profiling/generate endpoint (main.py:1644-1672)
+  - Defined stream_power_sample() callback function
+  - Creates POWER_SAMPLE message with all power metrics:
+    * relative_time_ms: Time since inference start
+    * cpu_power_mw: CPU power consumption
+    * gpu_power_mw: GPU power consumption
+    * ane_power_mw: Apple Neural Engine power consumption
+    * dram_power_mw: DRAM power consumption
+    * total_power_mw: Total system power consumption
+  - Broadcasts messages to all connected WebSocket clients via profiling_manager
+  - Uses asyncio.create_task() for non-blocking async broadcast
+  - Comprehensive error handling for streaming failures
+- Power samples streamed at 100ms intervals during inference:
+  - Matches PowerMonitor sample rate (sample_interval_ms=100)
+  - Provides real-time power visualization during profiling
+  - Includes timestamp relative to inference start for timeline correlation
+- All power metrics included in stream:
+  - CPU power (all clusters summed)
+  - GPU power
+  - ANE (Apple Neural Engine) power
+  - DRAM power
+  - Total power (sum of all components)
+- Thread-safe implementation:
+  - Streaming thread uses PowerMonitor's thread-safe get_samples()
+  - No race conditions with sample collection
+  - Proper lifecycle management prevents resource leaks
+- Verified Python syntax with py_compile for both files (no errors)
+- Updated PRD: EP-035 passes = true
+

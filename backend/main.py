@@ -1641,12 +1641,34 @@ async def profiled_generate(request: ProfiledGenerateRequest):
 
         database = ProfileDatabase()
 
-        # Create pipeline profiler
+        # Define power sample callback for WebSocket streaming
+        def stream_power_sample(sample):
+            """Callback to stream power samples via WebSocket"""
+            try:
+                message = {
+                    "type": ProfilingMessageType.POWER_SAMPLE,
+                    "timestamp": sample.timestamp,
+                    "data": {
+                        "relative_time_ms": sample.relative_time_ms,
+                        "cpu_power_mw": sample.cpu_power_mw,
+                        "gpu_power_mw": sample.gpu_power_mw,
+                        "ane_power_mw": sample.ane_power_mw,
+                        "dram_power_mw": sample.dram_power_mw,
+                        "total_power_mw": sample.total_power_mw
+                    }
+                }
+                # Broadcast to all connected WebSocket clients
+                asyncio.create_task(profiling_manager.broadcast(message))
+            except Exception as e:
+                logger.error(f"Failed to stream power sample: {e}")
+
+        # Create pipeline profiler with streaming callback
         profiler = InferencePipelineProfiler(
             power_monitor=power_monitor,
             layer_profiler=layer_profiler,
             deep_profiler=deep_profiler,
-            database=database
+            database=database,
+            power_sample_callback=stream_power_sample
         )
 
         # Start profiling session

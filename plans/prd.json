@@ -614,7 +614,7 @@
       "title": "WebSocket Profiling - Power Streaming",
       "description": "Stream power samples via WebSocket",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Create power_sample message type",
         "Stream samples at 100ms intervals during inference",

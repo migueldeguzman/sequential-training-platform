@@ -33,6 +33,7 @@ Usage:
 import time
 import uuid
 import logging
+import threading
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -44,6 +45,10 @@ from .deep_profiler import DeepAttentionProfiler, AttentionOperationMetrics, MLP
 from .database import ProfileDatabase
 
 logger = logging.getLogger(__name__)
+
+
+# WebSocket callback type for streaming profiling events
+PowerSampleCallback = Optional[callable]  # Callback signature: callback(sample: PowerSample)
 
 
 @dataclass
@@ -94,7 +99,8 @@ class InferencePipelineProfiler:
         power_monitor: Optional[PowerMonitor] = None,
         layer_profiler: Optional[LayerProfiler] = None,
         deep_profiler: Optional[DeepAttentionProfiler] = None,
-        database: Optional[ProfileDatabase] = None
+        database: Optional[ProfileDatabase] = None,
+        power_sample_callback: PowerSampleCallback = None
     ):
         """
         Initialize the inference pipeline profiler.
@@ -104,16 +110,54 @@ class InferencePipelineProfiler:
             layer_profiler: LayerProfiler instance for layer/component metrics
             deep_profiler: DeepAttentionProfiler instance for operation-level metrics (optional)
             database: ProfileDatabase instance for storing profiling data
+            power_sample_callback: Optional callback for streaming power samples (for WebSocket)
         """
         self.power_monitor = power_monitor
         self.layer_profiler = layer_profiler
         self.deep_profiler = deep_profiler
         self.database = database
+        self.power_sample_callback = power_sample_callback
 
         # Current active session
         self._current_session: Optional[ProfilingSession] = None
+        self._streaming_thread: Optional[threading.Thread] = None
+        self._streaming_active = False
 
         logger.info("Initialized InferencePipelineProfiler")
+
+    def _stream_power_samples(self) -> None:
+        """
+        Background thread to stream power samples via callback.
+
+        Polls PowerMonitor for new samples at 100ms intervals and
+        invokes the callback with each new sample.
+        """
+        if not self.power_monitor or not self.power_sample_callback:
+            return
+
+        last_sample_count = 0
+
+        while self._streaming_active:
+            try:
+                # Get all samples collected so far
+                samples = self.power_monitor.get_samples()
+
+                # Stream any new samples
+                if len(samples) > last_sample_count:
+                    for sample in samples[last_sample_count:]:
+                        try:
+                            self.power_sample_callback(sample)
+                        except Exception as e:
+                            logger.error(f"Error in power sample callback: {e}")
+
+                    last_sample_count = len(samples)
+
+                # Wait for next check (100ms interval)
+                time.sleep(0.1)
+
+            except Exception as e:
+                logger.error(f"Error in power sample streaming: {e}")
+                break
 
     def _generate_run_id(self) -> str:
         """
@@ -189,6 +233,17 @@ class InferencePipelineProfiler:
             try:
                 self.power_monitor.start()
                 logger.info("Power monitoring started")
+
+                # Start streaming thread if callback is provided
+                if self.power_sample_callback:
+                    self._streaming_active = True
+                    self._streaming_thread = threading.Thread(
+                        target=self._stream_power_samples,
+                        daemon=True,
+                        name="PowerSampleStreaming"
+                    )
+                    self._streaming_thread.start()
+                    logger.info("Power sample streaming started")
             except Exception as e:
                 logger.error(f"Failed to start power monitoring: {e}")
 
@@ -213,6 +268,13 @@ class InferencePipelineProfiler:
             yield session
 
         finally:
+            # Stop streaming thread
+            if self._streaming_active:
+                self._streaming_active = False
+                if self._streaming_thread and self._streaming_thread.is_alive():
+                    self._streaming_thread.join(timeout=1)
+                logger.info("Power sample streaming stopped")
+
             # Stop power monitoring
             if self.power_monitor and self.power_monitor.is_running():
                 try:
