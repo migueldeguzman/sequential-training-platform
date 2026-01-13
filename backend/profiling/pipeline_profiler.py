@@ -51,6 +51,8 @@ logger = logging.getLogger(__name__)
 PowerSampleCallback = Optional[callable]  # Callback signature: callback(sample: PowerSample)
 SectionEventCallback = Optional[callable]  # Callback signature: callback(event_type: str, phase: str, section_name: str, timestamp: float, data: dict)
 TokenCompleteCallback = Optional[callable]  # Callback signature: callback(token_data: dict)
+LayerMetricsCallback = Optional[callable]  # Callback signature: callback(layer_metrics_data: dict)
+ComponentMetricsCallback = Optional[callable]  # Callback signature: callback(component_metrics_data: dict)
 
 
 @dataclass
@@ -90,6 +92,8 @@ class ProfilingSession:
     # WebSocket streaming callbacks
     section_event_callback: SectionEventCallback = None
     token_complete_callback: TokenCompleteCallback = None
+    layer_metrics_callback: LayerMetricsCallback = None
+    component_metrics_callback: ComponentMetricsCallback = None
 
 
 class InferencePipelineProfiler:
@@ -108,7 +112,9 @@ class InferencePipelineProfiler:
         database: Optional[ProfileDatabase] = None,
         power_sample_callback: PowerSampleCallback = None,
         section_event_callback: SectionEventCallback = None,
-        token_complete_callback: TokenCompleteCallback = None
+        token_complete_callback: TokenCompleteCallback = None,
+        layer_metrics_callback: LayerMetricsCallback = None,
+        component_metrics_callback: ComponentMetricsCallback = None
     ):
         """
         Initialize the inference pipeline profiler.
@@ -121,6 +127,8 @@ class InferencePipelineProfiler:
             power_sample_callback: Optional callback for streaming power samples (for WebSocket)
             section_event_callback: Optional callback for streaming section events (for WebSocket)
             token_complete_callback: Optional callback for streaming token completion events (for WebSocket)
+            layer_metrics_callback: Optional callback for streaming layer metrics (for WebSocket)
+            component_metrics_callback: Optional callback for streaming component metrics (for WebSocket)
         """
         self.power_monitor = power_monitor
         self.layer_profiler = layer_profiler
@@ -129,6 +137,8 @@ class InferencePipelineProfiler:
         self.power_sample_callback = power_sample_callback
         self.section_event_callback = section_event_callback
         self.token_complete_callback = token_complete_callback
+        self.layer_metrics_callback = layer_metrics_callback
+        self.component_metrics_callback = component_metrics_callback
 
         # Current active session
         self._current_session: Optional[ProfilingSession] = None
@@ -236,7 +246,9 @@ class InferencePipelineProfiler:
             deep_profiler=self.deep_profiler,
             database=self.database,
             section_event_callback=self.section_event_callback,
-            token_complete_callback=self.token_complete_callback
+            token_complete_callback=self.token_complete_callback,
+            layer_metrics_callback=self.layer_metrics_callback,
+            component_metrics_callback=self.component_metrics_callback
         )
 
         # Store as current session
@@ -965,6 +977,149 @@ class InferencePipelineProfiler:
             logger.debug(f"Emitted token_complete event for token {token_index}: {token_text}")
         except Exception as e:
             logger.error(f"Error in token_complete callback: {e}")
+
+    def emit_layer_metrics_event(
+        self,
+        session: ProfilingSession,
+        token_index: int,
+        layer_index: int,
+        layer_name: str
+    ) -> None:
+        """
+        Emit layer metrics event via WebSocket callback.
+
+        Streams detailed layer metrics for a specific layer during token processing.
+        This is called after each token if the client requests detailed metrics.
+
+        Args:
+            session: Active profiling session
+            token_index: Index of the token being processed
+            layer_index: Index of the layer (0 to N-1)
+            layer_name: Name/identifier of the layer
+
+        Example:
+            for layer_idx in range(num_layers):
+                # ... process layer ...
+                profiler.emit_layer_metrics_event(
+                    session, token_idx, layer_idx, f"layer_{layer_idx}"
+                )
+        """
+        if not session.layer_metrics_callback:
+            return
+
+        if not session.layer_profiler:
+            return
+
+        # Get layer timings for this token
+        layer_timings = session.layer_profiler.get_timings()
+        if not layer_timings:
+            return
+
+        # Filter to timings for this specific layer
+        layer_specific_timings = [
+            t for t in layer_timings
+            if layer_name in t.module_path or f"layer.{layer_index}" in t.module_path
+        ]
+
+        if not layer_specific_timings:
+            return
+
+        # Aggregate metrics for this layer
+        total_duration = sum(t.duration_ms for t in layer_specific_timings)
+
+        # Calculate activation statistics
+        activation_means = [t.activation_mean for t in layer_specific_timings if t.activation_mean is not None]
+        activation_stds = [t.activation_std for t in layer_specific_timings if t.activation_std is not None]
+        activation_maxs = [t.activation_max for t in layer_specific_timings if t.activation_max is not None]
+        activation_sparsities = [t.activation_sparsity for t in layer_specific_timings if t.activation_sparsity is not None]
+
+        # Build layer metrics message
+        layer_metrics_data = {
+            "token_index": token_index,
+            "layer_index": layer_index,
+            "layer_name": layer_name,
+            "total_duration_ms": total_duration,
+            "num_components": len(layer_specific_timings),
+            "activation_stats": {
+                "mean_avg": sum(activation_means) / len(activation_means) if activation_means else None,
+                "std_avg": sum(activation_stds) / len(activation_stds) if activation_stds else None,
+                "max_avg": sum(activation_maxs) / len(activation_maxs) if activation_maxs else None,
+                "sparsity_avg": sum(activation_sparsities) / len(activation_sparsities) if activation_sparsities else None
+            },
+            "components": [
+                {
+                    "component_name": t.component_name,
+                    "duration_ms": t.duration_ms,
+                    "activation_mean": t.activation_mean,
+                    "activation_std": t.activation_std,
+                    "activation_max": t.activation_max,
+                    "activation_sparsity": t.activation_sparsity
+                }
+                for t in layer_specific_timings
+            ],
+            "timestamp": time.time()
+        }
+
+        # Emit via callback
+        try:
+            session.layer_metrics_callback(layer_metrics_data)
+            logger.debug(f"Emitted layer_metrics event for token {token_index}, layer {layer_index}")
+        except Exception as e:
+            logger.error(f"Error in layer_metrics callback: {e}")
+
+    def emit_component_metrics_event(
+        self,
+        session: ProfilingSession,
+        token_index: int,
+        layer_index: int,
+        component_name: str,
+        component_timing: ComponentTiming
+    ) -> None:
+        """
+        Emit component metrics event via WebSocket callback.
+
+        Streams detailed component metrics for a specific component during token processing.
+        This provides the most granular level of profiling data.
+
+        Args:
+            session: Active profiling session
+            token_index: Index of the token being processed
+            layer_index: Index of the layer containing this component
+            component_name: Name of the component (e.g., 'q_proj', 'k_proj', 'mlp.gate_proj')
+            component_timing: ComponentTiming object with metrics
+
+        Example:
+            for component_timing in layer_timings:
+                profiler.emit_component_metrics_event(
+                    session, token_idx, layer_idx,
+                    component_timing.component_name, component_timing
+                )
+        """
+        if not session.component_metrics_callback:
+            return
+
+        # Build component metrics message
+        component_metrics_data = {
+            "token_index": token_index,
+            "layer_index": layer_index,
+            "component_name": component_name,
+            "module_path": component_timing.module_path,
+            "duration_ms": component_timing.duration_ms,
+            "activation_stats": {
+                "mean": component_timing.activation_mean,
+                "std": component_timing.activation_std,
+                "max": component_timing.activation_max,
+                "sparsity": component_timing.activation_sparsity
+            },
+            "timestamp": time.time()
+        }
+
+        # Emit via callback
+        try:
+            session.component_metrics_callback(component_metrics_data)
+            logger.debug(f"Emitted component_metrics event for token {token_index}, layer {layer_index}, component {component_name}")
+        except Exception as e:
+            logger.error(f"Error in component_metrics callback: {e}")
 
     def profile_decode_embedding(
         self,

@@ -1702,6 +1702,49 @@ async def profiled_generate(request: ProfiledGenerateRequest):
             except Exception as e:
                 logger.error(f"Failed to stream token complete event: {e}")
 
+        # Define layer metrics callback for WebSocket streaming
+        def stream_layer_metrics(layer_metrics_data):
+            """Callback to stream layer metrics events via WebSocket"""
+            try:
+                message = {
+                    "type": ProfilingMessageType.LAYER_METRICS,
+                    "timestamp": layer_metrics_data.get("timestamp"),
+                    "data": {
+                        "token_index": layer_metrics_data.get("token_index"),
+                        "layer_index": layer_metrics_data.get("layer_index"),
+                        "layer_name": layer_metrics_data.get("layer_name"),
+                        "total_duration_ms": layer_metrics_data.get("total_duration_ms"),
+                        "num_components": layer_metrics_data.get("num_components"),
+                        "activation_stats": layer_metrics_data.get("activation_stats"),
+                        "components": layer_metrics_data.get("components")
+                    }
+                }
+                # Broadcast to all connected WebSocket clients
+                asyncio.create_task(profiling_manager.broadcast(message))
+            except Exception as e:
+                logger.error(f"Failed to stream layer metrics event: {e}")
+
+        # Define component metrics callback for WebSocket streaming
+        def stream_component_metrics(component_metrics_data):
+            """Callback to stream component metrics events via WebSocket"""
+            try:
+                message = {
+                    "type": ProfilingMessageType.COMPONENT_METRICS,
+                    "timestamp": component_metrics_data.get("timestamp"),
+                    "data": {
+                        "token_index": component_metrics_data.get("token_index"),
+                        "layer_index": component_metrics_data.get("layer_index"),
+                        "component_name": component_metrics_data.get("component_name"),
+                        "module_path": component_metrics_data.get("module_path"),
+                        "duration_ms": component_metrics_data.get("duration_ms"),
+                        "activation_stats": component_metrics_data.get("activation_stats")
+                    }
+                }
+                # Broadcast to all connected WebSocket clients
+                asyncio.create_task(profiling_manager.broadcast(message))
+            except Exception as e:
+                logger.error(f"Failed to stream component metrics event: {e}")
+
         # Create pipeline profiler with streaming callbacks
         profiler = InferencePipelineProfiler(
             power_monitor=power_monitor,
@@ -1710,7 +1753,9 @@ async def profiled_generate(request: ProfiledGenerateRequest):
             database=database,
             power_sample_callback=stream_power_sample,
             section_event_callback=stream_section_event,
-            token_complete_callback=stream_token_complete
+            token_complete_callback=stream_token_complete,
+            layer_metrics_callback=stream_layer_metrics,
+            component_metrics_callback=stream_component_metrics
         )
 
         # Start profiling session

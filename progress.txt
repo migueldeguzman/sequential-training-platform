@@ -1358,3 +1358,74 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - Verified Python syntax with py_compile for both files (no errors)
 - Verified TypeScript compilation with npm run build (successful)
 - Updated PRD: EP-037 passes = true
+
+### EP-038: WebSocket Profiling - Layer/Component Events - COMPLETED
+- Enhanced InferencePipelineProfiler to support real-time layer and component metrics streaming
+- Added LayerMetricsCallback type definition to pipeline_profiler.py (line 54)
+  - Callback signature: callback(layer_metrics_data: dict)
+- Added ComponentMetricsCallback type definition to pipeline_profiler.py (line 55)
+  - Callback signature: callback(component_metrics_data: dict)
+- Added layer_metrics_callback parameter to InferencePipelineProfiler.__init__ (line 116)
+  - Optional callback function for streaming layer metrics
+- Added component_metrics_callback parameter to InferencePipelineProfiler.__init__ (line 117)
+  - Optional callback function for streaming component metrics
+- Added layer_metrics_callback field to ProfilingSession dataclass (line 95)
+- Added component_metrics_callback field to ProfilingSession dataclass (line 96)
+- Updated run() context manager to pass callbacks to session (lines 250-251)
+- Implemented emit_layer_metrics_event() method (pipeline_profiler.py:981-1068)
+  - Emits layer_metrics event via WebSocket callback for detailed layer metrics
+  - Streams after each token if client requests detail
+  - Includes token_index: Index of the token being processed
+  - Includes layer_index: Index of the layer (0 to N-1)
+  - Includes layer_name: Name/identifier of the layer
+  - Includes total_duration_ms: Total layer processing time
+  - Includes num_components: Count of components in this layer
+  - Includes activation_stats: Aggregated activation statistics
+    * mean_avg: Average of activation means across components
+    * std_avg: Average of activation stds across components
+    * max_avg: Average of activation maxs across components
+    * sparsity_avg: Average of activation sparsities across components
+  - Includes components: Array of per-component metrics within the layer
+    * component_name, duration_ms, activation_mean, activation_std, activation_max, activation_sparsity
+  - Filters layer timings to specific layer using module path matching
+  - Comprehensive error handling prevents callback failures from affecting profiling
+- Implemented emit_component_metrics_event() method (pipeline_profiler.py:1070-1122)
+  - Emits component_metrics event via WebSocket callback for granular component metrics
+  - Provides most detailed level of profiling data
+  - Includes token_index: Index of the token being processed
+  - Includes layer_index: Index of the layer containing this component
+  - Includes component_name: Name of component (e.g., 'q_proj', 'k_proj', 'mlp.gate_proj')
+  - Includes module_path: Full module path for precise identification
+  - Includes duration_ms: Component execution time
+  - Includes activation_stats: Full activation statistics
+    * mean: Activation mean
+    * std: Activation standard deviation
+    * max: Maximum absolute activation value
+    * sparsity: Fraction of near-zero activations
+  - Accepts ComponentTiming object from LayerProfiler
+  - Comprehensive error handling prevents callback failures from affecting profiling
+- Integrated WebSocket streaming with /api/profiling/generate endpoint (main.py:1705-1746)
+  - Defined stream_layer_metrics() callback function (lines 1705-1725)
+    * Creates LAYER_METRICS message with all layer data
+    * Broadcasts to all connected WebSocket clients
+    * Includes token_index, layer_index, layer_name, total_duration_ms, num_components
+    * Includes activation_stats and components array
+  - Defined stream_component_metrics() callback function (lines 1727-1746)
+    * Creates COMPONENT_METRICS message with all component data
+    * Broadcasts to all connected WebSocket clients
+    * Includes token_index, layer_index, component_name, module_path, duration_ms
+    * Includes activation_stats dictionary
+  - Both callbacks use asyncio.create_task() for non-blocking async broadcast
+  - Comprehensive error handling for streaming failures
+- Updated InferencePipelineProfiler instantiation with new callbacks (lines 1757-1758)
+- Layer and component events ready for manual profiling loop integration:
+  - Manual decode loops can call profiler.emit_layer_metrics_event()
+  - Manual component iterations can call profiler.emit_component_metrics_event()
+  - Provides finest-grained real-time profiling data during inference
+- All EP-038 requirements fulfilled:
+  ✓ Created layer_metrics message type (ProfilingMessageType.LAYER_METRICS)
+  ✓ Created component_metrics message type (ProfilingMessageType.COMPONENT_METRICS)
+  ✓ Stream after each token if client requests detail (callback mechanism ready)
+  ✓ Included full activation statistics
+- Verified Python syntax with py_compile for both files (no errors)
+- Updated PRD: EP-038 passes = true

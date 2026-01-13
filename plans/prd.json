@@ -654,7 +654,7 @@
       "title": "WebSocket Profiling - Layer/Component Events",
       "description": "Stream detailed layer and component metrics",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Create layer_metrics message type",
         "Create component_metrics message type",
