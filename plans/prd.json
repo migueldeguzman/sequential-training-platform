@@ -174,7 +174,7 @@
       "title": "SQLite Database Schema Creation",
       "description": "Create SQLite database with full schema for profiling data",
       "priority": "CRITICAL",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Create backend/profiling/database.py",
         "Define profiling_runs table schema",

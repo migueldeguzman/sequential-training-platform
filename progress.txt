@@ -65,3 +65,19 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - Daemon thread ensures no hanging threads on process exit
 - Verified Python syntax with py_compile (no errors)
 
+### EP-006: SQLite Database Schema Creation - COMPLETED
+- Created backend/profiling/database.py with full schema implementation
+- Defined profiling_runs table with metadata (run_id, timestamp, model, prompt, response, tags, etc.)
+- Defined power_samples table for raw power measurements (CPU, GPU, ANE, DRAM, total)
+- Defined pipeline_sections table for phase/section timing and energy
+- Defined tokens table for per-token metrics during decode phase
+- Defined layer_metrics table for per-layer per-token profiling data
+- Defined component_metrics table for attention/MLP/layernorm component metrics
+- Defined deep_operation_metrics table for lowest-level operation profiling (optional)
+- Created comprehensive indexes for query performance (run_id, timestamp, model, tags, etc.)
+- Implemented ProfileDatabase class with connect(), close(), and _create_schema() methods
+- Implemented init_database() helper function for easy initialization
+- Added CASCADE DELETE constraints for data integrity
+- Enabled sqlite3.Row factory for column access by name
+- Verified Python syntax with py_compile (no errors)
+
