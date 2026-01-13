@@ -212,3 +212,26 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - Verified Python syntax with py_compile (no errors)
 - Updated PRD: EP-012 passes = true
 
+### EP-013: LayerProfiler Class - Cleanup - COMPLETED
+- Enhanced detach() method to ensure complete cleanup (lines 278-302)
+  - Removes all hooks from model with try/except error handling per hook
+  - Clears hook_handles list after removal
+  - Resets _hooks_registered flag to False
+  - Clears all stored timing metrics from thread-local storage
+  - Uses _timings_lock for thread-safe metric clearing
+  - Added comprehensive logging for cleanup confirmation
+- Context manager already implemented (__enter__, __exit__ methods at lines 304-311)
+  - __enter__ calls register_hooks() to set up profiling
+  - __exit__ calls detach() to ensure cleanup
+  - Returns False to not suppress exceptions (proper exception propagation)
+- Exception safety ensured throughout:
+  - detach() has try/except around individual hook removal to prevent partial cleanup failures
+  - __exit__ always calls detach() even if exceptions occur during profiling
+  - Exceptions are properly propagated to caller (not suppressed)
+- All stored metrics cleared on cleanup:
+  - Thread-local timings list cleared with thread-safe lock
+  - Hook handles list cleared
+  - All cleanup is idempotent (safe to call multiple times)
+- Verified Python syntax with py_compile (no errors)
+- Updated PRD: EP-013 passes = true
+

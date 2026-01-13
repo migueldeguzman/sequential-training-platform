@@ -290,7 +290,7 @@
       "title": "LayerProfiler Class - Cleanup",
       "description": "Implement proper hook removal and cleanup",
       "priority": "CRITICAL",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Implement detach() to remove all hooks",
         "Implement context manager (__enter__, __exit__)",

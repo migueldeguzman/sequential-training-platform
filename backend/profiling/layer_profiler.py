@@ -277,17 +277,29 @@ class LayerProfiler:
 
     def detach(self) -> None:
         """
-        Remove all hooks from the model.
+        Remove all hooks from the model and clear all stored metrics.
 
         Call this when profiling is complete to clean up.
+        This ensures complete cleanup even on exceptions.
         """
         logger.info(f"Removing {len(self.hook_handles)} hooks")
 
+        # Remove all hooks
         for handle in self.hook_handles:
-            handle.remove()
+            try:
+                handle.remove()
+            except Exception as e:
+                logger.warning(f"Error removing hook: {e}")
 
         self.hook_handles.clear()
         self._hooks_registered = False
+
+        # Clear all stored timing metrics
+        with self._timings_lock:
+            if hasattr(self._local, 'timings'):
+                self._local.timings.clear()
+
+        logger.info("LayerProfiler cleanup complete")
 
     def __enter__(self):
         """Context manager entry - register hooks."""
