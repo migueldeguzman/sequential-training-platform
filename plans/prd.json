@@ -1035,7 +1035,7 @@
       "title": "Frontend - CompareView Component",
       "description": "Create side-by-side comparison of multiple runs",
       "priority": "LOW",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Create src/components/profiling/CompareView.tsx",
         "Allow selecting 2-4 runs to compare",

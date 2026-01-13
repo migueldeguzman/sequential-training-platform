@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { ProfilingRun } from '@/types';
 import RunList from './RunList';
 import RunDetail from './RunDetail';
+import CompareView from './CompareView';
 
 const HistoryBrowser: React.FC = () => {
   const [selectedRun, setSelectedRun] = useState<ProfilingRun | null>(null);
@@ -38,6 +39,10 @@ const HistoryBrowser: React.FC = () => {
     setSelectedRun(null);
   };
 
+  const handleRemoveFromCompare = (runId: string) => {
+    setSelectedRunsForCompare(selectedRunsForCompare.filter(r => r.id !== runId));
+  };
+
   return (
     <div className="flex h-full gap-4">
       {/* Left Panel: Run List */}
@@ -70,9 +75,9 @@ const HistoryBrowser: React.FC = () => {
       {/* Right Panel: Run Detail or Compare View */}
       <div className="flex-1 flex flex-col bg-gray-900 border border-gray-700 rounded-lg">
         {compareMode ? (
-          // Compare View (placeholder for now)
-          <div className="flex flex-col h-full items-center justify-center p-8 text-gray-400">
-            {selectedRunsForCompare.length === 0 && (
+          // Compare View
+          selectedRunsForCompare.length === 0 ? (
+            <div className="flex flex-col h-full items-center justify-center p-8 text-gray-400">
               <div className="text-center">
                 <svg
                   className="w-16 h-16 mx-auto mb-4 text-gray-600"
@@ -90,57 +95,18 @@ const HistoryBrowser: React.FC = () => {
                 <h3 className="text-lg font-medium text-gray-300 mb-2">Compare Runs</h3>
                 <p className="text-sm">Select 2-4 runs from the list to compare their metrics</p>
               </div>
-            )}
-
-            {selectedRunsForCompare.length === 1 && (
+            </div>
+          ) : selectedRunsForCompare.length === 1 ? (
+            <div className="flex flex-col h-full items-center justify-center p-8 text-gray-400">
               <div className="text-center">
                 <p className="text-sm">
                   {selectedRunsForCompare.length} run selected. Select at least one more to compare.
                 </p>
               </div>
-            )}
-
-            {selectedRunsForCompare.length >= 2 && (
-              <div className="w-full h-full flex flex-col p-6">
-                <div className="mb-4">
-                  <h3 className="text-lg font-semibold text-white mb-2">
-                    Comparing {selectedRunsForCompare.length} Runs
-                  </h3>
-                  <p className="text-sm text-gray-400">
-                    Comparison view is under development (EP-062)
-                  </p>
-                </div>
-
-                {/* List selected runs */}
-                <div className="space-y-2">
-                  {selectedRunsForCompare.map((run, idx) => (
-                    <div
-                      key={run.id}
-                      className="bg-gray-800 border border-gray-700 rounded p-3"
-                    >
-                      <div className="flex justify-between items-start mb-1">
-                        <span className="text-sm font-medium text-white">
-                          Run {idx + 1}
-                        </span>
-                        <button
-                          onClick={() => handleSelectRun(run)}
-                          className="text-xs text-red-400 hover:text-red-300"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                      <div className="text-xs text-gray-400">
-                        {new Date(run.timestamp).toLocaleString()}
-                      </div>
-                      <div className="text-xs text-blue-400 font-mono mt-1">
-                        {run.model_name}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <CompareView runs={selectedRunsForCompare} onRemoveRun={handleRemoveFromCompare} />
+          )
         ) : selectedRun ? (
           // Run Detail View
           <RunDetail runId={selectedRun.id} onClose={handleCloseDetail} />

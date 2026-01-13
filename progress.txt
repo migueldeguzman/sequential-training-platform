@@ -2561,3 +2561,34 @@ Updated PRD: EP-074 passes = true
 Reference: Inspired by Caravaca et al. 2025 finding that output tokens consume 11x more energy than input tokens
 
 Updated PRD: EP-075 passes = true
+
+
+## 2026-01-14 - EP-062: Frontend - CompareView Component
+
+Status: COMPLETE
+
+Implementation:
+- Created src/components/profiling/CompareView.tsx with full comparison functionality
+- Supports selecting 2-4 runs for side-by-side comparison
+- Displays metrics comparison including energy, duration, efficiency, power, and throughput
+- Color-codes values (green for best, red for worst, yellow for middle)
+- Shows percentage difference from average for each metric
+- Calculates and displays statistical summary (min, max, avg, std dev, range)
+- Highlights differences between runs with visual indicators
+- Includes phase energy breakdown visualization (prefill vs decode)
+- Displays token breakdown (input/output counts)
+- Integrated CompareView into HistoryBrowser.tsx
+- Added onRemoveRun handler for removing runs from comparison
+- Placeholder for power timeline overlay chart (noted as coming soon)
+- TypeScript compilation: PASSED (npm run build successful)
+
+Features implemented:
+- Run selection UI with max 4 runs
+- Side-by-side metric cards with color coding
+- Statistical analysis showing min/max/avg/stddev
+- Phase breakdown bars (prefill/decode energy percentages)
+- Metric selector for focusing on different aspects
+- Remove button for each run in comparison
+- Responsive grid layout adapting to number of runs
+
+Updated PRD: EP-062 passes = true
