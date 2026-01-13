@@ -2494,3 +2494,23 @@ Implementation Details:
 - TypeScript compilation: PASSED
 
 Updated PRD: EP-061 passes = true
+
+
+==============================================================================
+Date: 2026-01-14
+Feature: EP-063 - Frontend - HistoryBrowser Container
+Status: COMPLETED
+Description: Created history browser container composing list, detail, and compare views
+
+Implementation Details:
+- Created HistoryBrowser.tsx with split-panel layout
+- Left panel: RunList component with filtering/search
+- Right panel: RunDetail OR CompareView (compare mode toggle)
+- Run selection state management (single select or multi-select)
+- Compare mode toggle button with max 4 runs selection
+- Empty states for no selection and compare mode
+- Placeholder for CompareView (EP-062 pending implementation)
+- Fully functional with RunList and RunDetail integration
+- TypeScript compilation: PASSED
+
+Updated PRD: EP-063 passes = true

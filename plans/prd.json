@@ -1050,7 +1050,7 @@
       "title": "Frontend - HistoryBrowser Container",
       "description": "Compose history browser with list. detail, and compare",
       "priority": "MEDIUM",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Create src/components/profiling/HistoryBrowser.tsx",
         "Layout: RunList on left",
