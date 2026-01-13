@@ -62,6 +62,7 @@ class PowerMonitor:
         self.sample_interval_ms = sample_interval_ms
         self._process: Optional[subprocess.Popen] = None
         self._samples: List[PowerSample] = []
+        self._samples_lock = threading.Lock()  # Thread-safe access to samples
         self._start_time: Optional[float] = None
         self._running = False
         self._sampling_thread: Optional[threading.Thread] = None
@@ -153,7 +154,8 @@ class PowerMonitor:
                         # Extract power sample
                         sample = self._parse_plist_sample(plist_data)
                         if sample:
-                            self._samples.append(sample)
+                            with self._samples_lock:
+                                self._samples.append(sample)
 
                         # Reset buffer for next sample
                         self._plist_buffer = ""
@@ -268,7 +270,8 @@ class PowerMonitor:
         Returns:
             List of PowerSample objects collected since start()
         """
-        return self._samples.copy()
+        with self._samples_lock:
+            return self._samples.copy()
 
     def get_current(self) -> Optional[PowerSample]:
         """
@@ -277,7 +280,8 @@ class PowerMonitor:
         Returns:
             Latest PowerSample or None if no samples collected yet
         """
-        return self._samples[-1] if self._samples else None
+        with self._samples_lock:
+            return self._samples[-1] if self._samples else None
 
     def __enter__(self):
         """Context manager entry"""

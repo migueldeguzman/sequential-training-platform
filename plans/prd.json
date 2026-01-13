@@ -160,7 +160,7 @@
       "title": "PowerMonitor Class - Async Sampling Thread",
       "description": "Run power sampling in background thread during inference",
       "priority": "CRITICAL",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Implement background thread for continuous sampling",
         "Add thread-safe sample collection queue",

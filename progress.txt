@@ -53,3 +53,15 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - PowerSample dataclass already existed with all required fields
 - Verified Python syntax with py_compile (no errors)
 
+### EP-005: PowerMonitor Class - Async Sampling Thread - COMPLETED
+- Added threading.Lock (_samples_lock) for thread-safe sample collection
+- Background sampling thread already implemented in _sampling_loop() (from EP-004)
+- Protected _samples.append() with lock in _sampling_loop()
+- Protected get_samples() with lock to return thread-safe copy
+- Protected get_current() with lock for latest sample access
+- get_current() returns Optional[PowerSample] (latest sample or None)
+- get_samples() returns List[PowerSample] (copy of all samples)
+- Thread cleanup already implemented in stop() with join(timeout=2)
+- Daemon thread ensures no hanging threads on process exit
+- Verified Python syntax with py_compile (no errors)
+
