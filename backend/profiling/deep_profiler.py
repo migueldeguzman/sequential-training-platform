@@ -46,10 +46,24 @@ class MLPOperationMetrics:
 
 
 @dataclass
+class LayerNormOperationMetrics:
+    """Metrics for individual LayerNorm operations (EP-017)."""
+    mean_time: float = 0.0  # Time for mean computation
+    variance_time: float = 0.0  # Time for variance computation
+    normalization_time: float = 0.0  # Time for normalization operation
+    scale_shift_time: float = 0.0  # Time for scale and shift (gamma, beta)
+    total_time: float = 0.0  # Total LayerNorm time
+
+    # Input/output variance ratio (measure of normalization effectiveness)
+    variance_ratio: float = 0.0
+
+
+@dataclass
 class DeepOperationMetrics:
     """Complete metrics for a deep profiling session."""
     attention_ops: List[AttentionOperationMetrics] = field(default_factory=list)
     mlp_ops: List[MLPOperationMetrics] = field(default_factory=list)
+    layernorm_ops: List[LayerNormOperationMetrics] = field(default_factory=list)
     layer_idx: Optional[int] = None
     token_idx: Optional[int] = None
 
@@ -73,6 +87,12 @@ class DeepAttentionProfiler:
     - Up projection and activation
     - Gate * up multiplication
     - Down projection
+
+    LayerNorm operations (EP-017):
+    - Mean computation
+    - Variance computation
+    - Normalization operation
+    - Scale and shift (gamma, beta)
     """
 
     def __init__(self, model: nn.Module):
@@ -86,6 +106,7 @@ class DeepAttentionProfiler:
         self.is_patched = False
         self.original_forwards: Dict[str, Any] = {}
         self.original_mlp_forwards: Dict[str, Any] = {}
+        self.original_layernorm_forwards: Dict[str, Any] = {}
         self.metrics_storage = threading.local()
         self._reset_metrics()
 
@@ -502,9 +523,150 @@ class DeepAttentionProfiler:
 
         return instrumented_forward
 
+    def _find_layernorm_modules(self) -> List[Tuple[str, nn.Module]]:
+        """
+        Find all LayerNorm modules in the model (EP-017).
+
+        Returns:
+            List of (name, module) tuples for LayerNorm modules
+        """
+        layernorm_modules = []
+
+        # Common LayerNorm module patterns in HuggingFace transformers
+        layernorm_patterns = [
+            'layernorm',
+            'layer_norm',
+            'ln',
+            'rmsnorm',
+            'rms_norm'
+        ]
+
+        for name, module in self.model.named_modules():
+            # Check if this is a LayerNorm or RMSNorm module
+            module_type = type(module).__name__.lower()
+            for pattern in layernorm_patterns:
+                if pattern in name.lower() or pattern in module_type:
+                    # Make sure it has a forward method
+                    if hasattr(module, 'forward'):
+                        layernorm_modules.append((name, module))
+                        break
+
+        return layernorm_modules
+
+    def _create_instrumented_layernorm_forward(
+        self,
+        original_forward,
+        module_name: str
+    ):
+        """
+        Create an instrumented LayerNorm forward method that times operations (EP-017).
+
+        Args:
+            original_forward: The original forward method
+            module_name: Name of the module being instrumented
+
+        Returns:
+            Instrumented forward method
+        """
+        def instrumented_forward(hidden_states):
+            metrics = LayerNormOperationMetrics()
+
+            # Start total timing
+            total_start = time.perf_counter()
+
+            try:
+                # For MPS (Apple Silicon), ensure synchronization before timing
+                if torch.backends.mps.is_available():
+                    torch.mps.synchronize()
+
+                # Get reference to the module for detailed timing
+                module = None
+                for name, mod in self.model.named_modules():
+                    if name == module_name:
+                        module = mod
+                        break
+
+                if module is not None:
+                    # Store input variance for ratio calculation
+                    with torch.no_grad():
+                        input_variance = hidden_states.var().item()
+
+                    # Time mean computation
+                    mean_start = time.perf_counter()
+                    mean = hidden_states.mean(dim=-1, keepdim=True)
+                    if torch.backends.mps.is_available():
+                        torch.mps.synchronize()
+                    mean_end = time.perf_counter()
+                    metrics.mean_time = (mean_end - mean_start) * 1000
+
+                    # Time variance computation
+                    variance_start = time.perf_counter()
+                    variance = hidden_states.var(dim=-1, keepdim=True, unbiased=False)
+                    if torch.backends.mps.is_available():
+                        torch.mps.synchronize()
+                    variance_end = time.perf_counter()
+                    metrics.variance_time = (variance_end - variance_start) * 1000
+
+                    # Time normalization operation
+                    norm_start = time.perf_counter()
+                    # Add epsilon for numerical stability
+                    epsilon = getattr(module, 'eps', getattr(module, 'variance_epsilon', 1e-5))
+                    normalized = (hidden_states - mean) / torch.sqrt(variance + epsilon)
+                    if torch.backends.mps.is_available():
+                        torch.mps.synchronize()
+                    norm_end = time.perf_counter()
+                    metrics.normalization_time = (norm_end - norm_start) * 1000
+
+                    # Time scale and shift (gamma, beta)
+                    scale_start = time.perf_counter()
+                    # Different LayerNorm implementations use different parameter names
+                    if hasattr(module, 'weight') and module.weight is not None:
+                        output = normalized * module.weight
+                    else:
+                        output = normalized
+
+                    if hasattr(module, 'bias') and module.bias is not None:
+                        output = output + module.bias
+                    if torch.backends.mps.is_available():
+                        torch.mps.synchronize()
+                    scale_end = time.perf_counter()
+                    metrics.scale_shift_time = (scale_end - scale_start) * 1000
+
+                    # Calculate variance ratio (input variance / output variance)
+                    with torch.no_grad():
+                        output_variance = output.var().item()
+                        if output_variance > 0:
+                            metrics.variance_ratio = input_variance / output_variance
+                        else:
+                            metrics.variance_ratio = 0.0
+
+                else:
+                    # Fallback: just call original and time total
+                    output = original_forward(hidden_states)
+
+                if torch.backends.mps.is_available():
+                    torch.mps.synchronize()
+
+                # End total timing
+                total_end = time.perf_counter()
+                metrics.total_time = (total_end - total_start) * 1000
+
+                # Store metrics
+                if not hasattr(self.metrics_storage, 'layernorm_metrics'):
+                    self.metrics_storage.layernorm_metrics = []
+                self.metrics_storage.layernorm_metrics.append(metrics)
+
+                return output
+
+            except Exception as e:
+                # If profiling fails, fall back to original behavior
+                return original_forward(hidden_states)
+
+        return instrumented_forward
+
     def patch(self):
         """
-        Patch all attention and MLP modules with instrumented versions.
+        Patch all attention, MLP, and LayerNorm modules with instrumented versions.
         """
         if self.is_patched:
             return
@@ -543,6 +705,19 @@ class DeepAttentionProfiler:
                 name
             )
 
+        # Patch LayerNorm modules (EP-017)
+        layernorm_modules = self._find_layernorm_modules()
+
+        for name, module in layernorm_modules:
+            # Store original forward
+            self.original_layernorm_forwards[name] = module.forward
+
+            # Replace with instrumented version
+            module.forward = self._create_instrumented_layernorm_forward(
+                self.original_layernorm_forwards[name],
+                name
+            )
+
         self.is_patched = True
 
     def unpatch(self):
@@ -569,6 +744,15 @@ class DeepAttentionProfiler:
                 module.forward = self.original_mlp_forwards[name]
 
         self.original_mlp_forwards.clear()
+
+        # Restore LayerNorm modules (EP-017)
+        layernorm_modules = self._find_layernorm_modules()
+
+        for name, module in layernorm_modules:
+            if name in self.original_layernorm_forwards:
+                module.forward = self.original_layernorm_forwards[name]
+
+        self.original_layernorm_forwards.clear()
         self.is_patched = False
 
     def get_metrics(self) -> List[AttentionOperationMetrics]:
@@ -593,11 +777,24 @@ class DeepAttentionProfiler:
             return []
         return self.metrics_storage.mlp_metrics
 
+    def get_layernorm_metrics(self) -> List[LayerNormOperationMetrics]:
+        """
+        Get all collected LayerNorm metrics (EP-017).
+
+        Returns:
+            List of LayerNormOperationMetrics
+        """
+        if not hasattr(self.metrics_storage, 'layernorm_metrics'):
+            return []
+        return self.metrics_storage.layernorm_metrics
+
     def reset(self):
         """Reset collected metrics."""
         self._reset_metrics()
         if hasattr(self.metrics_storage, 'mlp_metrics'):
             self.metrics_storage.mlp_metrics = []
+        if hasattr(self.metrics_storage, 'layernorm_metrics'):
+            self.metrics_storage.layernorm_metrics = []
 
     def __enter__(self):
         """Context manager entry - applies patches."""

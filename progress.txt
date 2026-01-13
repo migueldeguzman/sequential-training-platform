@@ -355,3 +355,99 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - Verified Python syntax with py_compile (no errors)
 - Updated PRD: EP-016 passes = true
 
+### Paper Analysis: TokenPowerBench (Niu et al. 2025) - COMPLETED
+- Reviewed paper: "TokenPowerBench: Benchmarking the Power Consumption of LLM Inference"
+- Paper source: arxiv.org/abs/2512.03024 (papers/2512.03024v1.pdf)
+- Key findings relevant to our profiler:
+
+**Core Methodology from Paper:**
+- Three-layer architecture: Configuration, Execution & Measurement, Report Generation
+- Phase-aligned power samples (every sample tagged with prefill/decode/idle)
+- Energy formula: E_total = E_Prefill + E_Decode = E_GPU + E_CPU + E_DRAM + E_Others
+- Primary metric: Joules per token (J/t)
+
+**Key Experimental Findings:**
+1. Energy scales super-linearly with model params: 1B→70B = 7.3× energy (not 70×)
+2. MoE models 2-3× more efficient than equivalent dense models
+3. Batch size impact: 2-3× energy spread between batch 32-1024, steepest gain at 32-256
+4. Context length: 2K→10K tokens = ~3× energy increase
+5. Quantization: FP8 cuts energy ~30% vs FP16 with 13-17% throughput boost
+6. Parallelism: Pure tensor parallelism (TP=16) beats pipeline parallelism for energy
+
+**Comparison with Our Profiler:**
+| Aspect           | TokenPowerBench      | Our Energy Profiler          |
+|------------------|----------------------|------------------------------|
+| Hardware         | NVIDIA GPUs (H100)   | Apple Silicon M4 Max         |
+| Power Source     | NVML/DCGM, RAPL      | powermetrics                 |
+| Components       | GPU, CPU, DRAM       | CPU, GPU, ANE, DRAM          |
+| Granularity      | Phase-level          | Per-token, per-layer, per-op |
+| Inference Engine | vLLM, TensorRT-LLM   | PyTorch direct               |
+
+**Our Advantages:**
+- Deeper granularity (per-token, per-layer, per-component, per-operation)
+- Apple Neural Engine (ANE) profiling
+- Unified memory architecture insights
+
+**New Tasks Added (EP-084 to EP-096):**
+- EP-084: Phase-Tagged Power Samples (HIGH)
+- EP-085: Peak Power Tracking (HIGH)
+- EP-086: Idle Power Baseline Measurement (HIGH)
+- EP-087: Batch Size Energy Analysis (MEDIUM)
+- EP-088: Energy-Delay Product Metric (MEDIUM)
+- EP-089: Cost and Carbon Estimation (MEDIUM)
+- EP-090: Component Energy Breakdown Chart (HIGH)
+- EP-091: MoE Energy Analysis (LOW)
+- EP-092: Energy Scaling Analysis (MEDIUM)
+- EP-093: Joules Per Token Metric Standardization (HIGH)
+- EP-094: Power Timeline Phase Annotations (MEDIUM)
+- EP-095: Inference Engine Comparison Support (LOW)
+- EP-096: Throughput vs Energy Tradeoff Analysis (MEDIUM)
+
+**Total PRD Tasks Updated:**
+- Before: 83 tasks (13 completed, 70 remaining)
+- After: 96 tasks (16 completed, 80 remaining)
+
+
+### EP-017: DeepAttentionProfiler - LayerNorm Operations - COMPLETED
+- Extended DeepAttentionProfiler to profile LayerNorm and RMSNorm operations
+- Created LayerNormOperationMetrics dataclass for individual LayerNorm operation timings
+  - mean_time: Time for mean computation (hidden_states.mean())
+  - variance_time: Time for variance computation (hidden_states.var())
+  - normalization_time: Time for normalization operation ((x - mean) / sqrt(variance + eps))
+  - scale_shift_time: Time for scale and shift (gamma * normalized + beta)
+  - total_time: Total LayerNorm module time
+  - variance_ratio: Input variance / output variance (measure of normalization effectiveness)
+- Updated DeepOperationMetrics dataclass to include layernorm_ops field
+- Added original_layernorm_forwards dictionary to store original LayerNorm forward methods
+- Implemented _find_layernorm_modules() to locate all LayerNorm modules in model
+  - Searches for common LayerNorm patterns: 'layernorm', 'layer_norm', 'ln', 'rmsnorm', 'rms_norm'
+  - Checks both module name and module type (class name)
+  - Returns list of (name, module) tuples for patching
+- Implemented _create_instrumented_layernorm_forward() wrapper function
+  - Instruments both LayerNorm and RMSNorm architectures
+  - Times mean computation separately (mean() operation)
+  - Times variance computation separately (var() operation with unbiased=False)
+  - Times normalization operation (subtract mean, divide by sqrt of variance + epsilon)
+  - Times scale and shift operations (weight * normalized + bias)
+  - Extracts epsilon from module attributes (eps or variance_epsilon, default 1e-5)
+  - Computes variance ratio: input_variance / output_variance for effectiveness measure
+  - Handles modules with/without weight and bias parameters (different LayerNorm implementations)
+  - Uses torch.mps.synchronize() on Apple Silicon for accurate timing
+  - Stores metrics in thread-local storage (self.metrics_storage.layernorm_metrics)
+  - Falls back to original behavior on any profiling errors
+- Enhanced patch() method to patch attention, MLP, and LayerNorm modules
+  - Patches attention modules (existing behavior)
+  - Patches MLP modules (EP-016 behavior)
+  - Patches LayerNorm modules with instrumented LayerNorm forward
+  - Sets is_patched flag after all three types are patched
+- Enhanced unpatch() method to restore attention, MLP, and LayerNorm modules
+  - Restores original attention forwards (existing behavior)
+  - Restores original MLP forwards (EP-016 behavior)
+  - Restores original LayerNorm forwards from stored dictionary
+  - Clears original_forwards, original_mlp_forwards, and original_layernorm_forwards dictionaries
+- Implemented get_layernorm_metrics() to retrieve all collected LayerNormOperationMetrics
+- Enhanced reset() to clear attention, MLP, and LayerNorm metrics from thread-local storage
+- All LayerNorm profiling is thread-safe using threading.local() storage
+- Verified Python syntax with py_compile (no errors)
+- Updated PRD: EP-017 passes = true
+

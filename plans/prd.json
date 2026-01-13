@@ -350,7 +350,7 @@
       "title": "DeepAttentionProfiler - LayerNorm Operations",
       "description": "Profile deep operations within LayerNorm",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Patch LayerNorm forward method",
         "Time mean computation",
@@ -1371,6 +1371,226 @@
         "Note: No CUDA graphs on Apple Silicon (MPS backend)",
         "Create comparison notes in documentation",
         "Track any patterns that differ from paper's findings"
+      ]
+    },
+    {
+      "id": "EP-084",
+      "title": "Phase-Tagged Power Samples",
+      "description": "Tag every power sample with the active inference phase for precise energy attribution",
+      "priority": "HIGH",
+      "passes": false,
+      "reference": "TokenPowerBench: Phase-aligned metrics pipeline attributes energy to prefill/decode stages",
+      "steps": [
+        "Add 'phase' field to PowerSample dataclass (idle/pre_inference/prefill/decode/post_inference)",
+        "Update PowerMonitor to accept current_phase setter",
+        "Tag each sample with active phase at collection time",
+        "Store phase in power_samples database table",
+        "Calculate phase-specific energy: E_prefill = sum(samples where phase=prefill)",
+        "Calculate phase-specific energy: E_decode = sum(samples where phase=decode)",
+        "Add phase breakdown to run summary API",
+        "Color-code power timeline chart by phase"
+      ]
+    },
+    {
+      "id": "EP-085",
+      "title": "Peak Power Tracking",
+      "description": "Track and display peak power draw during inference, not just averages",
+      "priority": "HIGH",
+      "passes": false,
+      "reference": "TokenPowerBench: Reports peak power alongside averages for capacity planning",
+      "steps": [
+        "Add peak_power_mw field to profiling_runs table",
+        "Add peak_power_cpu_mw, peak_power_gpu_mw, peak_power_ane_mw, peak_power_dram_mw",
+        "Track peak values during PowerMonitor sampling",
+        "Record timestamp of peak power occurrence",
+        "Add peak power to run summary API",
+        "Show peak vs average comparison in frontend",
+        "Add peak power marker on power timeline chart"
+      ]
+    },
+    {
+      "id": "EP-086",
+      "title": "Idle Power Baseline Measurement",
+      "description": "Measure idle power before inference to calculate active power delta",
+      "priority": "HIGH",
+      "passes": false,
+      "reference": "TokenPowerBench: Separates idle from active power for accurate attribution",
+      "steps": [
+        "Add 2-second idle sampling period before inference start",
+        "Calculate baseline_power_mw as average during idle",
+        "Store baseline in profiling_runs table",
+        "Calculate active_power_delta = measured - baseline",
+        "Show idle vs active power comparison",
+        "Option to subtract baseline from all measurements",
+        "Display baseline on power timeline chart as horizontal line"
+      ]
+    },
+    {
+      "id": "EP-087",
+      "title": "Batch Size Energy Analysis",
+      "description": "Analyze how batch size affects energy per token for throughput optimization",
+      "priority": "MEDIUM",
+      "passes": false,
+      "reference": "TokenPowerBench: 2-3× energy spread between batch 32-1024, steepest drop at 32-256",
+      "steps": [
+        "Add batch_size field to profiling_runs table",
+        "Track batch size used during inference",
+        "Create endpoint to compare runs with different batch sizes",
+        "Plot energy_per_token vs batch_size curve",
+        "Identify optimal batch size for energy efficiency",
+        "Show throughput (tokens/s) vs energy tradeoff",
+        "Create BatchSizeAnalysis frontend component"
+      ]
+    },
+    {
+      "id": "EP-088",
+      "title": "Energy-Delay Product Metric",
+      "description": "Calculate Energy-Delay Product (EDP) for holistic efficiency assessment",
+      "priority": "MEDIUM",
+      "passes": false,
+      "reference": "TokenPowerBench: EDP combines energy and latency into single efficiency metric",
+      "steps": [
+        "Calculate EDP = total_energy_mj × total_duration_ms",
+        "Store EDP in profiling_runs table",
+        "Calculate EDP per token",
+        "Calculate EDP per phase (prefill/decode)",
+        "Add EDP to efficiency metrics in run summary",
+        "Lower EDP = better (optimizes both energy and speed)",
+        "Show EDP comparison across runs"
+      ]
+    },
+    {
+      "id": "EP-089",
+      "title": "Cost and Carbon Estimation",
+      "description": "Estimate electricity cost and CO2 emissions from energy consumption",
+      "priority": "MEDIUM",
+      "passes": false,
+      "reference": "TokenPowerBench: Converts kWh to dollar cost and CO2 for sustainability reporting",
+      "steps": [
+        "Add settings for electricity_price_per_kwh (default: $0.12)",
+        "Add settings for carbon_intensity_g_per_kwh (default: 400g for US grid)",
+        "Calculate cost_usd = (energy_mj / 3600000) × electricity_price",
+        "Calculate co2_grams = (energy_mj / 3600000) × carbon_intensity",
+        "Store cost and carbon estimates in database",
+        "Add cost/carbon to run summary API",
+        "Create CostCarbonCard frontend component",
+        "Support regional carbon intensity presets (CA, TX, EU, etc.)"
+      ]
+    },
+    {
+      "id": "EP-090",
+      "title": "Component Energy Breakdown Chart",
+      "description": "Visualize energy split across CPU, GPU, ANE, DRAM components",
+      "priority": "HIGH",
+      "passes": false,
+      "reference": "TokenPowerBench: E_total = E_GPU + E_CPU + E_DRAM + E_Others; GPUs ~60% of total",
+      "steps": [
+        "Calculate total energy per component from phase-tagged samples",
+        "Create stacked bar chart showing component breakdown",
+        "Show percentage of total per component",
+        "Compare component ratios across different runs",
+        "Identify which component dominates (GPU expected ~60%)",
+        "Show component breakdown per phase",
+        "Create ComponentBreakdownChart frontend component"
+      ]
+    },
+    {
+      "id": "EP-091",
+      "title": "MoE Energy Analysis",
+      "description": "Special analysis for Mixture-of-Experts models showing efficiency gains",
+      "priority": "LOW",
+      "passes": false,
+      "reference": "TokenPowerBench: MoE uses 2-3× less energy than dense with similar quality",
+      "steps": [
+        "Detect MoE architecture in model_features",
+        "Track number of active experts per token",
+        "Calculate effective_params = active_experts × expert_params",
+        "Compare energy per effective parameter",
+        "Show MoE efficiency vs equivalent dense model",
+        "Track expert activation patterns over tokens",
+        "Create MoEAnalysis frontend component"
+      ]
+    },
+    {
+      "id": "EP-092",
+      "title": "Energy Scaling Analysis",
+      "description": "Analyze super-linear energy scaling with model parameters",
+      "priority": "MEDIUM",
+      "passes": false,
+      "reference": "TokenPowerBench: 1B→70B = 7.3× energy (not 70×) due to memory/cache overhead",
+      "steps": [
+        "Collect energy data across models of different sizes",
+        "Plot energy vs total_params scatter",
+        "Fit power-law curve: energy = a × params^b",
+        "Calculate scaling exponent b (expect b < 1 but super-linear in practice)",
+        "Show energy per million parameters metric",
+        "Identify scaling efficiency: larger models more/less efficient?",
+        "Create EnergyScalingChart frontend component"
+      ]
+    },
+    {
+      "id": "EP-093",
+      "title": "Joules Per Token Metric Standardization",
+      "description": "Standardize on Joules per token (J/t) as primary energy metric",
+      "priority": "HIGH",
+      "passes": false,
+      "reference": "TokenPowerBench: Uses J/t as primary metric; enables cross-model comparison",
+      "steps": [
+        "Calculate joules_per_token = total_energy_mj / 1000 / total_tokens",
+        "Calculate joules_per_input_token (prefill)",
+        "Calculate joules_per_output_token (decode)",
+        "Add J/t to all summary displays prominently",
+        "Use J/t as default sort metric in run list",
+        "Show J/t trend over time/runs",
+        "Enable filtering runs by J/t range"
+      ]
+    },
+    {
+      "id": "EP-094",
+      "title": "Power Timeline Phase Annotations",
+      "description": "Add phase boundary annotations to power timeline visualization",
+      "priority": "MEDIUM",
+      "passes": false,
+      "reference": "TokenPowerBench Figure 1: Shows clear phase boundaries on power timeline",
+      "steps": [
+        "Draw vertical lines at phase transitions on power chart",
+        "Label each phase region (Pre-Inference, Prefill, Decode, Post)",
+        "Show phase duration in milliseconds",
+        "Show phase energy in millijoules",
+        "Highlight decode phase token boundaries",
+        "Add zoom to phase functionality"
+      ]
+    },
+    {
+      "id": "EP-095",
+      "title": "Inference Engine Comparison Support",
+      "description": "Support comparing energy across different inference engines/backends",
+      "priority": "LOW",
+      "passes": false,
+      "reference": "TokenPowerBench: Compares vLLM, TensorRT-LLM, DeepSpeed, Transformers",
+      "steps": [
+        "Add inference_engine field to profiling_runs table",
+        "Auto-detect engine (transformers, mlx, etc.)",
+        "Enable filtering runs by engine",
+        "Compare same model across engines",
+        "Show engine efficiency ranking",
+        "Note: On Apple Silicon, options are more limited than NVIDIA"
+      ]
+    },
+    {
+      "id": "EP-096",
+      "title": "Throughput vs Energy Tradeoff Analysis",
+      "description": "Analyze the relationship between throughput (tokens/s) and energy efficiency",
+      "priority": "MEDIUM",
+      "passes": false,
+      "reference": "TokenPowerBench: Shows batching improves both throughput and efficiency up to a point",
+      "steps": [
+        "Calculate tokens_per_second for each run",
+        "Calculate tokens_per_joule (energy efficiency)",
+        "Plot throughput vs energy_per_token curve",
+        "Identify Pareto-optimal configurations",
+        "Show knee of the curve (best tradeoff point)",
+        "Create ThroughputEnergyTradeoff frontend component"
       ]
     }
   ]
