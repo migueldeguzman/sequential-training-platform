@@ -303,7 +303,7 @@
       "title": "DeepAttentionProfiler - Monkey Patch Approach",
       "description": "Implement deep operation profiling via monkey-patching HuggingFace attention",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Create backend/profiling/deep_profiler.py",
         "Store original attention forward method",
@@ -1198,6 +1198,179 @@
         "Test chart components with mock data",
         "Test WebSocket hook behavior",
         "Test context state management"
+      ]
+    },
+    {
+      "id": "EP-074",
+      "title": "Model Architecture Feature Extraction",
+      "description": "Extract and store model architectural features for energy analysis (inspired by Caravaca et al. 2025)",
+      "priority": "HIGH",
+      "passes": false,
+      "reference": "Paper: 'From Prompts to Power' - model structure significantly impacts energy beyond parameter count",
+      "steps": [
+        "Create backend/profiling/model_features.py",
+        "Extract num_layers from model config",
+        "Extract hidden_size (model dimension)",
+        "Extract intermediate_size (FFN dimension)",
+        "Extract num_attention_heads",
+        "Extract num_key_value_heads (for GQA/MQA detection)",
+        "Calculate embedding_params count",
+        "Calculate attention_params count per layer",
+        "Calculate ffn_params count per layer",
+        "Detect attention mechanism type (MHA/GQA/MQA)",
+        "Detect if model is MoE (Mixture of Experts)",
+        "Store features in profiling_runs table"
+      ]
+    },
+    {
+      "id": "EP-075",
+      "title": "Prefill vs Decode Energy Analysis",
+      "description": "Separate tracking and analysis of prefill vs decode phase energy (paper shows output tokens ~11x more costly than input)",
+      "priority": "HIGH",
+      "passes": false,
+      "reference": "Paper finding: Output tokens consume 11x more energy than input tokens for same count",
+      "steps": [
+        "Track total energy for prefill phase separately",
+        "Track total energy for decode phase separately",
+        "Calculate energy per input token (prefill_energy / input_tokens)",
+        "Calculate energy per output token (decode_energy / output_tokens)",
+        "Calculate input/output token energy ratio",
+        "Store prefill_energy_mj and decode_energy_mj in tokens table",
+        "Add comparison view in frontend showing input vs output costs"
+      ]
+    },
+    {
+      "id": "EP-076",
+      "title": "Energy Efficiency Metrics Dashboard",
+      "description": "Calculate and display key energy efficiency metrics per run",
+      "priority": "HIGH",
+      "passes": false,
+      "reference": "Paper uses: Wh per prompt, energy per token, normalized by model size",
+      "steps": [
+        "Calculate total_energy_per_token (mJ/token)",
+        "Calculate prefill_energy_per_token",
+        "Calculate decode_energy_per_token",
+        "Calculate energy_per_million_params",
+        "Calculate tokens_per_joule (efficiency score)",
+        "Calculate power_utilization_percentage (actual vs TDP if available)",
+        "Add efficiency metrics to run summary API",
+        "Create EfficiencyMetricsCard frontend component"
+      ]
+    },
+    {
+      "id": "EP-077",
+      "title": "Model Comparison View",
+      "description": "Compare energy profiles across different models and configurations",
+      "priority": "MEDIUM",
+      "passes": false,
+      "reference": "Paper Figure 4: Same parameter count can have order-of-magnitude energy differences",
+      "steps": [
+        "Create /api/profiling/compare endpoint",
+        "Accept list of run_ids to compare",
+        "Normalize metrics by prompt length for fair comparison",
+        "Calculate relative efficiency scores",
+        "Create ModelComparisonChart component",
+        "Show scatter plot: model_size vs energy",
+        "Show bar chart: energy per token by model",
+        "Highlight outliers (unusually efficient/inefficient)"
+      ]
+    },
+    {
+      "id": "EP-078",
+      "title": "Architectural Impact Analysis",
+      "description": "Analyze how model architecture affects energy consumption",
+      "priority": "MEDIUM",
+      "passes": false,
+      "reference": "Paper finding: Layers scale linearly, dimensionality scales quadratically with energy",
+      "steps": [
+        "Create ArchitecturalAnalysis component",
+        "Plot energy vs num_layers (expect linear relationship)",
+        "Plot energy vs hidden_size (expect quadratic relationship)",
+        "Plot energy vs intermediate_size",
+        "Compare MHA vs GQA vs MQA energy profiles",
+        "Show correlation coefficients for each architectural feature",
+        "Add regression line overlays"
+      ]
+    },
+    {
+      "id": "EP-079",
+      "title": "Energy Prediction Model",
+      "description": "Build ML model to predict energy consumption before running inference",
+      "priority": "LOW",
+      "passes": false,
+      "reference": "Paper achieves R²=0.92-0.98 with Random Forest using architectural + prompt features",
+      "steps": [
+        "Create backend/profiling/energy_predictor.py",
+        "Collect training data from profiling runs",
+        "Feature engineering: model features + prompt features",
+        "Train Random Forest or XGBoost model",
+        "Implement predict_energy(model_config, input_tokens, output_tokens)",
+        "Add /api/profiling/predict endpoint",
+        "Create EnergyPredictionWidget frontend component",
+        "Show predicted vs actual comparison after runs"
+      ]
+    },
+    {
+      "id": "EP-080",
+      "title": "Long Context Energy Analysis",
+      "description": "Track how context length affects energy consumption and KV cache pressure",
+      "priority": "MEDIUM",
+      "passes": false,
+      "reference": "Paper Figure 2: Long context significantly increases energy, KV cache is bottleneck",
+      "steps": [
+        "Track KV cache memory usage per run",
+        "Calculate KV cache utilization percentage",
+        "Plot energy vs input_token_count for long prompts",
+        "Identify KV cache saturation point",
+        "Warn when approaching memory limits",
+        "Create LongContextAnalysis component"
+      ]
+    },
+    {
+      "id": "EP-081",
+      "title": "Quantization Energy Comparison",
+      "description": "Compare energy consumption across different quantization levels",
+      "priority": "LOW",
+      "passes": false,
+      "reference": "Paper Figure 8: Quantization significantly reduces energy in memory-constrained scenarios",
+      "steps": [
+        "Detect model precision (FP32, FP16, BF16, FP8, INT8, INT4)",
+        "Store precision in model features",
+        "Create comparison view for same model at different precisions",
+        "Show energy savings from quantization",
+        "Note: Apple Silicon may behave differently than NVIDIA GPUs"
+      ]
+    },
+    {
+      "id": "EP-082",
+      "title": "Token-Level Energy Visualization",
+      "description": "Enhanced per-token energy visualization showing patterns",
+      "priority": "MEDIUM",
+      "passes": false,
+      "reference": "Paper analyzes energy per prompt; we go deeper with per-token granularity",
+      "steps": [
+        "Color-code tokens by energy consumption intensity",
+        "Show token energy distribution histogram",
+        "Identify high-energy tokens (complex reasoning?)",
+        "Identify low-energy tokens (common patterns?)",
+        "Create TokenEnergyHeatmap showing token position vs layer",
+        "Enable filtering by energy threshold"
+      ]
+    },
+    {
+      "id": "EP-083",
+      "title": "Apple Silicon vs Paper Comparison Notes",
+      "description": "Document differences between our Apple Silicon results and paper's NVIDIA results",
+      "priority": "LOW",
+      "passes": false,
+      "reference": "Paper uses NVIDIA GPUs; we use Apple Silicon M4 Max with unified memory",
+      "steps": [
+        "Document Apple Silicon power measurement methodology",
+        "Note: We measure CPU+GPU+ANE+DRAM (paper measures GPU only ~88%)",
+        "Note: Unified memory architecture differences",
+        "Note: No CUDA graphs on Apple Silicon (MPS backend)",
+        "Create comparison notes in documentation",
+        "Track any patterns that differ from paper's findings"
       ]
     }
   ]

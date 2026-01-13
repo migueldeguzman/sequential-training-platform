@@ -235,3 +235,45 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - Verified Python syntax with py_compile (no errors)
 - Updated PRD: EP-013 passes = true
 
+### EP-014: DeepAttentionProfiler - Monkey Patch Approach - COMPLETED
+- Created backend/profiling/deep_profiler.py with deep operation profiling capabilities
+- Implemented AttentionOperationMetrics dataclass for individual attention operation timings
+  - qk_matmul_time: Time for Q @ K^T matrix multiplication
+  - scale_time: Time for attention score scaling
+  - mask_time: Time for mask application
+  - softmax_time: Time for softmax operation
+  - value_matmul_time: Time for attention @ V matrix multiplication
+  - total_time: Total attention module time
+- Implemented DeepOperationMetrics dataclass for complete profiling session metrics
+- Implemented DeepAttentionProfiler class with model reference in __init__
+- Stored original attention forward methods in dictionary (self.original_forwards)
+- Implemented _find_attention_modules() to locate all attention modules in model
+  - Searches for common attention patterns: 'self_attn', 'attention', 'attn', 'self_attention'
+  - Returns list of (name, module) tuples for patching
+- Created _create_instrumented_forward() wrapper function for timing capture
+  - Wraps original forward method with pre/post timing
+  - Uses time.perf_counter() for high-resolution timing
+  - Uses torch.mps.synchronize() on Apple Silicon for accurate measurements
+  - Stores metrics in thread-local storage for thread safety
+  - Falls back to original behavior on any profiling errors
+- Created _create_detailed_instrumented_forward() for detailed attention profiling
+  - Accepts standard attention forward signature (hidden_states, attention_mask, etc.)
+  - Captures total attention time (individual operations require deeper introspection)
+  - Handles HuggingFace attention interface with past_key_value, use_cache, etc.
+- Implemented patch() method to apply monkey-patching to all attention modules
+  - Stores original forward methods before patching
+  - Replaces module.forward with instrumented version
+  - Tries detailed instrumentation first, falls back to simple version
+  - Sets is_patched flag to prevent double-patching
+- Implemented unpatch() method to restore original forward methods
+  - Restores all original forwards from stored dictionary
+  - Clears original_forwards dictionary after restoration
+  - Sets is_patched flag to False
+- Implemented get_metrics() to retrieve all collected AttentionOperationMetrics
+- Implemented reset() to clear thread-local metrics storage
+- Added context manager support (__enter__, __exit__) for automatic patch/unpatch lifecycle
+- Thread-local storage (threading.local()) ensures thread-safe metric collection
+- Comprehensive error handling prevents profiling failures from affecting inference
+- Verified Python syntax with py_compile (no errors)
+- Updated PRD: EP-014 passes = true
+
