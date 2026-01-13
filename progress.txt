@@ -97,3 +97,24 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - Added debug logging for all insert operations
 - Verified Python syntax with py_compile (no errors)
 
+### EP-008: ProfileDatabase Class - Query Methods - COMPLETED
+- Implemented get_run(run_id) to retrieve full run data by run identifier
+- Implemented get_runs() with comprehensive filtering (model, date_from, date_to, tags, experiment)
+- Added pagination support to get_runs() with limit and offset parameters
+- Added sorting by timestamp DESC for chronological ordering
+- Implemented get_run_summary(run_id) for aggregated statistics
+  - Includes phase breakdown with total duration, energy, power per phase
+  - Includes average metrics per layer across all tokens
+  - Includes average metrics per component (q_proj, k_proj, etc.) across all occurrences
+  - Identifies hottest components (top 10 by energy consumption)
+- Implemented get_tokens(run_id) to retrieve all tokens with metrics ordered by index
+- Implemented get_layer_metrics(token_id) to retrieve layer metrics for a specific token
+- Implemented get_component_metrics(layer_metric_id) to retrieve component metrics for a layer
+- Implemented get_power_timeline(run_id) to retrieve all power samples ordered by timestamp
+- Implemented search_by_prompt(query_string) for full-text search in prompt field
+- Implemented delete_run(run_id) with CASCADE DELETE for all related records
+- All query methods return List[dict] or Optional[dict] for easy JSON serialization
+- All methods use parameterized queries to prevent SQL injection
+- Complex aggregation queries with JOINs and GROUP BY for summary statistics
+- Verified Python syntax with py_compile (no errors)
+

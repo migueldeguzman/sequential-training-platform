@@ -210,7 +210,7 @@
       "title": "ProfileDatabase Class - Query Methods",
       "description": "Implement query methods for retrieving profiling data",
       "priority": "CRITICAL",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Implement get_run(run_id) for full run data",
         "Implement get_runs() with filtering (date, model, tags)",

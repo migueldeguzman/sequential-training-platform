@@ -497,6 +497,299 @@ class ProfileDatabase:
         self.conn.commit()
         logger.debug(f"Added {len(metrics)} deep operation metrics for component {component_metric_id}")
 
+    def get_run(self, run_id: str) -> Optional[dict]:
+        """Retrieve full run data by run_id.
+
+        Args:
+            run_id: Run identifier
+
+        Returns:
+            Dictionary with full run data or None if not found
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM profiling_runs WHERE run_id = ?", (run_id,))
+        row = cursor.fetchone()
+
+        if not row:
+            return None
+
+        return dict(row)
+
+    def get_runs(
+        self,
+        model: Optional[str] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        tags: Optional[str] = None,
+        experiment: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict]:
+        """Retrieve list of profiling runs with optional filters.
+
+        Args:
+            model: Filter by model name
+            date_from: Filter runs from this timestamp (ISO format)
+            date_to: Filter runs up to this timestamp (ISO format)
+            tags: Filter by comma-separated tags
+            experiment: Filter by experiment name
+            limit: Maximum number of results
+            offset: Number of results to skip (for pagination)
+
+        Returns:
+            List of run dictionaries
+        """
+        cursor = self.conn.cursor()
+
+        # Build dynamic query with filters
+        query = "SELECT * FROM profiling_runs WHERE 1=1"
+        params = []
+
+        if model:
+            query += " AND model_name = ?"
+            params.append(model)
+
+        if date_from:
+            query += " AND timestamp >= ?"
+            params.append(date_from)
+
+        if date_to:
+            query += " AND timestamp <= ?"
+            params.append(date_to)
+
+        if tags:
+            # Check if any of the provided tags match
+            query += " AND tags LIKE ?"
+            params.append(f"%{tags}%")
+
+        if experiment:
+            query += " AND experiment_name = ?"
+            params.append(experiment)
+
+        query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        return [dict(row) for row in rows]
+
+    def get_run_summary(self, run_id: str) -> Optional[dict]:
+        """Get aggregated summary statistics for a run.
+
+        Args:
+            run_id: Run identifier
+
+        Returns:
+            Dictionary with summary statistics or None if not found
+        """
+        cursor = self.conn.cursor()
+
+        # Get basic run info
+        cursor.execute("SELECT * FROM profiling_runs WHERE run_id = ?", (run_id,))
+        run = cursor.fetchone()
+
+        if not run:
+            return None
+
+        summary = dict(run)
+
+        # Get phase breakdown
+        cursor.execute(
+            """
+            SELECT
+                phase,
+                SUM(duration_ms) as total_duration_ms,
+                SUM(energy_mj) as total_energy_mj,
+                AVG(avg_power_mw) as avg_power_mw,
+                COUNT(*) as section_count
+            FROM pipeline_sections
+            WHERE run_id = ?
+            GROUP BY phase
+            """,
+            (run_id,)
+        )
+        phases = cursor.fetchall()
+        summary["phase_breakdown"] = [dict(phase) for phase in phases]
+
+        # Get average metrics per layer
+        cursor.execute(
+            """
+            SELECT
+                layer_index,
+                AVG(duration_ms) as avg_duration_ms,
+                AVG(energy_mj) as avg_energy_mj,
+                AVG(avg_power_mw) as avg_power_mw,
+                COUNT(*) as token_count
+            FROM layer_metrics
+            WHERE token_id IN (SELECT id FROM tokens WHERE run_id = ?)
+            GROUP BY layer_index
+            ORDER BY layer_index
+            """,
+            (run_id,)
+        )
+        layers = cursor.fetchall()
+        summary["layer_averages"] = [dict(layer) for layer in layers]
+
+        # Get average metrics per component
+        cursor.execute(
+            """
+            SELECT
+                cm.component_name,
+                AVG(cm.duration_ms) as avg_duration_ms,
+                AVG(cm.energy_mj) as avg_energy_mj,
+                AVG(cm.avg_power_mw) as avg_power_mw,
+                AVG(cm.activation_mean) as avg_activation_mean,
+                AVG(cm.activation_std) as avg_activation_std,
+                AVG(cm.activation_max) as avg_activation_max,
+                AVG(cm.activation_sparsity) as avg_activation_sparsity,
+                COUNT(*) as occurrence_count
+            FROM component_metrics cm
+            JOIN layer_metrics lm ON cm.layer_metric_id = lm.id
+            JOIN tokens t ON lm.token_id = t.id
+            WHERE t.run_id = ?
+            GROUP BY cm.component_name
+            ORDER BY avg_energy_mj DESC
+            """,
+            (run_id,)
+        )
+        components = cursor.fetchall()
+        summary["component_averages"] = [dict(comp) for comp in components]
+
+        # Identify hottest components (top 10 by energy)
+        if components:
+            summary["hottest_components"] = [dict(comp) for comp in components[:10]]
+
+        return summary
+
+    def get_tokens(self, run_id: str) -> list[dict]:
+        """Get all tokens with their metrics for a run.
+
+        Args:
+            run_id: Run identifier
+
+        Returns:
+            List of token dictionaries with metrics
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM tokens
+            WHERE run_id = ?
+            ORDER BY token_index
+            """,
+            (run_id,)
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    def get_layer_metrics(self, token_id: int) -> list[dict]:
+        """Get layer metrics for a specific token.
+
+        Args:
+            token_id: Token database ID
+
+        Returns:
+            List of layer metric dictionaries
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM layer_metrics
+            WHERE token_id = ?
+            ORDER BY layer_index
+            """,
+            (token_id,)
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    def get_component_metrics(self, layer_metric_id: int) -> list[dict]:
+        """Get component metrics for a specific layer.
+
+        Args:
+            layer_metric_id: Layer metric database ID
+
+        Returns:
+            List of component metric dictionaries
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM component_metrics
+            WHERE layer_metric_id = ?
+            ORDER BY component_name
+            """,
+            (layer_metric_id,)
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    def get_power_timeline(self, run_id: str) -> list[dict]:
+        """Get power sample timeline for a run.
+
+        Args:
+            run_id: Run identifier
+
+        Returns:
+            List of power sample dictionaries ordered by timestamp
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM power_samples
+            WHERE run_id = ?
+            ORDER BY timestamp_ms
+            """,
+            (run_id,)
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    def search_by_prompt(self, query_string: str, limit: int = 50) -> list[dict]:
+        """Search for runs by prompt text.
+
+        Args:
+            query_string: Text to search for in prompts
+            limit: Maximum number of results
+
+        Returns:
+            List of run dictionaries matching the search
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM profiling_runs
+            WHERE prompt LIKE ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+            """,
+            (f"%{query_string}%", limit)
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    def delete_run(self, run_id: str) -> bool:
+        """Delete a profiling run and all related data.
+
+        Args:
+            run_id: Run identifier
+
+        Returns:
+            True if deleted, False if not found
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM profiling_runs WHERE run_id = ?", (run_id,))
+        self.conn.commit()
+
+        deleted = cursor.rowcount > 0
+        if deleted:
+            logger.info(f"Deleted profiling run {run_id}")
+        else:
+            logger.warning(f"Profiling run {run_id} not found for deletion")
+
+        return deleted
+
 
 def init_database(db_path: str = "backend/profiling.db") -> ProfileDatabase:
     """Initialize and return a connected ProfileDatabase instance.
