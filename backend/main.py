@@ -9,6 +9,7 @@ import asyncio
 import shutil
 import subprocess
 import re
+import logging
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional, List
@@ -20,6 +21,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from jose import JWTError, jwt
 import hashlib
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Configuration
 SECRET_KEY = os.environ.get("SECRET_KEY", "your-secret-key-change-in-production")
@@ -1710,6 +1715,125 @@ async def get_powermetrics_status():
     """Get powermetrics availability status."""
     from profiling.utils import get_powermetrics_status
     return get_powermetrics_status()
+
+
+@app.get("/api/profiling/runs")
+async def get_profiling_runs(
+    model: Optional[str] = Query(None, description="Filter by model name"),
+    date_from: Optional[str] = Query(None, description="Filter runs from this timestamp (ISO format)"),
+    date_to: Optional[str] = Query(None, description="Filter runs up to this timestamp (ISO format)"),
+    tags: Optional[str] = Query(None, description="Filter by comma-separated tags"),
+    experiment: Optional[str] = Query(None, description="Filter by experiment name"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of results"),
+    offset: int = Query(0, ge=0, description="Number of results to skip"),
+    sort_by: str = Query("date", description="Sort by: date, duration, energy"),
+):
+    """
+    List profiling runs with optional filtering and pagination.
+
+    Query parameters:
+    - model: Filter by model name
+    - date_from: Filter runs from this timestamp (ISO format)
+    - date_to: Filter runs up to this timestamp (ISO format)
+    - tags: Filter by comma-separated tags
+    - experiment: Filter by experiment name
+    - limit: Maximum number of results (1-1000, default 100)
+    - offset: Number of results to skip for pagination (default 0)
+    - sort_by: Sort by date (default), duration, or energy
+
+    Returns list with summary metrics per run.
+    """
+    from profiling.database import ProfileDatabase
+
+    try:
+        database = ProfileDatabase()
+
+        # Get runs with filters
+        runs = database.get_runs(
+            model=model,
+            date_from=date_from,
+            date_to=date_to,
+            tags=tags,
+            experiment=experiment,
+            limit=limit,
+            offset=offset,
+        )
+
+        # Add summary metrics for each run
+        runs_with_summary = []
+        for run in runs:
+            run_id = run["run_id"]
+
+            # Get basic summary stats from database
+            summary = database.get_run_summary(run_id)
+
+            if summary:
+                # Calculate total metrics from phase breakdown
+                total_duration_ms = sum(
+                    phase.get("total_duration_ms", 0) or 0
+                    for phase in summary.get("phase_breakdown", [])
+                )
+                total_energy_mj = sum(
+                    phase.get("total_energy_mj", 0) or 0
+                    for phase in summary.get("phase_breakdown", [])
+                )
+
+                runs_with_summary.append({
+                    "run_id": run["run_id"],
+                    "timestamp": run["timestamp"],
+                    "model_name": run["model_name"],
+                    "prompt": run["prompt"],
+                    "response": run.get("response"),
+                    "experiment_name": run.get("experiment_name"),
+                    "tags": run.get("tags"),
+                    "profiling_depth": run.get("profiling_depth"),
+                    "status": run.get("status"),
+                    "total_duration_ms": total_duration_ms,
+                    "total_energy_mj": total_energy_mj,
+                    "input_tokens": run.get("input_tokens"),
+                    "output_tokens": run.get("output_tokens"),
+                })
+            else:
+                # Fallback if summary is not available
+                runs_with_summary.append({
+                    "run_id": run["run_id"],
+                    "timestamp": run["timestamp"],
+                    "model_name": run["model_name"],
+                    "prompt": run["prompt"],
+                    "response": run.get("response"),
+                    "experiment_name": run.get("experiment_name"),
+                    "tags": run.get("tags"),
+                    "profiling_depth": run.get("profiling_depth"),
+                    "status": run.get("status"),
+                    "total_duration_ms": None,
+                    "total_energy_mj": None,
+                    "input_tokens": None,
+                    "output_tokens": None,
+                })
+
+        # Sort results if requested
+        if sort_by == "duration" and runs_with_summary:
+            runs_with_summary.sort(
+                key=lambda x: x.get("total_duration_ms") or 0,
+                reverse=True
+            )
+        elif sort_by == "energy" and runs_with_summary:
+            runs_with_summary.sort(
+                key=lambda x: x.get("total_energy_mj") or 0,
+                reverse=True
+            )
+        # Default sort by date is already handled by database query
+
+        return {
+            "runs": runs_with_summary,
+            "total": len(runs_with_summary),
+            "limit": limit,
+            "offset": offset,
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to retrieve profiling runs: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve profiling runs: {str(e)}")
 
 
 if __name__ == "__main__":

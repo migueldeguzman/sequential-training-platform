@@ -915,3 +915,50 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - Verified TypeScript compilation with npm run build (successful)
 - Updated PRD: EP-027 passes = true
 
+### EP-028: Profiling Runs List Endpoint - COMPLETED
+- Implemented GET /api/profiling/runs endpoint in backend/main.py (lines 1715-1832)
+  - Accepts comprehensive query parameters for filtering:
+    * model: Filter by model name
+    * date_from: Filter runs from this timestamp (ISO format)
+    * date_to: Filter runs up to this timestamp (ISO format)
+    * tags: Filter by comma-separated tags (partial match)
+    * experiment: Filter by experiment name
+    * limit: Maximum number of results (1-1000, default 100)
+    * offset: Number of results to skip for pagination (default 0)
+    * sort_by: Sort by date (default), duration, or energy
+  - Integrates with ProfileDatabase.get_runs() with all filter parameters
+  - Adds summary metrics for each run:
+    * Retrieves run summary from database
+    * Calculates total_duration_ms from phase breakdown (sum across all phases)
+    * Calculates total_energy_mj from phase breakdown (sum across all phases)
+    * Includes input_tokens and output_tokens if available
+  - Returns list with full run metadata plus calculated metrics:
+    * run_id, timestamp, model_name, prompt, response
+    * experiment_name, tags, profiling_depth, status
+    * total_duration_ms, total_energy_mj
+    * input_tokens, output_tokens
+  - Implements sorting options:
+    * date: Default sort by timestamp DESC (from database)
+    * duration: Sort by total_duration_ms descending
+    * energy: Sort by total_energy_mj descending
+  - Returns response dictionary with:
+    * runs: List of run objects with summary metrics
+    * total: Count of returned runs
+    * limit: Applied limit value
+    * offset: Applied offset value
+  - Comprehensive error handling with 500 status on failures
+  - Logging for all errors with detailed messages
+- Added logging import and logger setup to main.py:
+  - import logging at top of file
+  - logging.basicConfig(level=logging.INFO) configuration
+  - logger = logging.getLogger(__name__) initialization
+- Pagination support enables efficient browsing of large run histories
+  - Standard limit/offset pattern for REST API pagination
+  - Client can request pages by adjusting offset (e.g., offset=0, offset=100, offset=200)
+- Filtering enables targeted queries:
+  - Filter by model to compare different models
+  - Filter by date range to analyze time periods
+  - Filter by tags or experiment name for organized profiling campaigns
+- Verified Python syntax with py_compile (no errors)
+- Updated PRD: EP-028 passes = true
+

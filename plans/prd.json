@@ -517,7 +517,7 @@
       "title": "Profiling Runs List Endpoint",
       "description": "Create endpoint to list profiling runs",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Implement GET /api/profiling/runs endpoint",
         "Add query params: model, date_from, date_to, tags, experiment",
