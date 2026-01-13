@@ -1092,6 +1092,75 @@ class ProfileDatabase:
 
         summary["efficiency_metrics"] = efficiency_metrics
 
+        # Calculate component energy breakdown (EP-090)
+        # Get total energy per hardware component from power samples
+        cursor.execute(
+            """
+            SELECT
+                run_id,
+                -- Calculate energy for each component (Power * Time)
+                -- Each sample represents 100ms interval (0.1s)
+                SUM(cpu_power_mw * 0.1) as cpu_energy_mj,
+                SUM(gpu_power_mw * 0.1) as gpu_energy_mj,
+                SUM(ane_power_mw * 0.1) as ane_energy_mj,
+                SUM(dram_power_mw * 0.1) as dram_energy_mj,
+                SUM(total_power_mw * 0.1) as total_energy_mj,
+                AVG(cpu_power_mw) as avg_cpu_power_mw,
+                AVG(gpu_power_mw) as avg_gpu_power_mw,
+                AVG(ane_power_mw) as avg_ane_power_mw,
+                AVG(dram_power_mw) as avg_dram_power_mw,
+                MAX(cpu_power_mw) as peak_cpu_power_mw,
+                MAX(gpu_power_mw) as peak_gpu_power_mw,
+                MAX(ane_power_mw) as peak_ane_power_mw,
+                MAX(dram_power_mw) as peak_dram_power_mw,
+                COUNT(*) as sample_count
+            FROM power_samples
+            WHERE run_id = ? AND phase != 'idle'
+            GROUP BY run_id
+            """,
+            (run_id,)
+        )
+        component_row = cursor.fetchone()
+
+        if component_row:
+            component_breakdown = dict(component_row)
+
+            # Calculate percentages of total energy
+            total_e = component_breakdown["total_energy_mj"]
+            if total_e and total_e > 0:
+                component_breakdown["cpu_energy_percentage"] = (component_breakdown["cpu_energy_mj"] / total_e) * 100
+                component_breakdown["gpu_energy_percentage"] = (component_breakdown["gpu_energy_mj"] / total_e) * 100
+                component_breakdown["ane_energy_percentage"] = (component_breakdown["ane_energy_mj"] / total_e) * 100
+                component_breakdown["dram_energy_percentage"] = (component_breakdown["dram_energy_mj"] / total_e) * 100
+            else:
+                component_breakdown["cpu_energy_percentage"] = 0
+                component_breakdown["gpu_energy_percentage"] = 0
+                component_breakdown["ane_energy_percentage"] = 0
+                component_breakdown["dram_energy_percentage"] = 0
+
+            summary["component_energy_breakdown"] = component_breakdown
+        else:
+            summary["component_energy_breakdown"] = None
+
+        # Get component breakdown by phase (for detailed analysis)
+        cursor.execute(
+            """
+            SELECT
+                phase,
+                SUM(cpu_power_mw * 0.1) as cpu_energy_mj,
+                SUM(gpu_power_mw * 0.1) as gpu_energy_mj,
+                SUM(ane_power_mw * 0.1) as ane_energy_mj,
+                SUM(dram_power_mw * 0.1) as dram_energy_mj,
+                SUM(total_power_mw * 0.1) as total_energy_mj
+            FROM power_samples
+            WHERE run_id = ? AND phase != 'idle'
+            GROUP BY phase
+            """,
+            (run_id,)
+        )
+        phase_components = cursor.fetchall()
+        summary["component_energy_by_phase"] = [dict(pc) for pc in phase_components]
+
         return summary
 
     def get_tokens(self, run_id: str) -> list[dict]:

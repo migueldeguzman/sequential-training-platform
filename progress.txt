@@ -2760,3 +2760,33 @@ Updated PRD: EP-076 passes = true
 
 **Reference**: Paper Figure 4 - Same parameter count can have order-of-magnitude energy differences due to architectural choices
 
+
+---
+Date: 2026-01-14
+Feature: EP-090 - Component Energy Breakdown Chart
+Status: COMPLETED
+Description: Implemented hardware component energy breakdown visualization showing CPU, GPU, ANE, and DRAM energy distribution
+
+Implementation Details:
+- Backend: Added component energy calculation in database.py get_run_summary()
+  - Calculates total energy per component (CPU, GPU, ANE, DRAM) from phase-tagged power samples
+  - Calculates energy percentages for each component
+  - Includes average and peak power metrics per component
+  - Added component energy breakdown by phase for detailed analysis
+
+- Frontend: Created ComponentBreakdownChart component (src/components/profiling/charts/ComponentBreakdownChart.tsx)
+  - Stacked horizontal bar chart showing total component breakdown
+  - Color-coded components (Blue=CPU, Green=GPU, Orange=ANE, Purple=DRAM)
+  - Shows energy values in mJ and percentages
+  - Supports two view modes: total and by-phase
+  - Integrated into AnalysisView with detailed stats cards
+
+- TypeScript Types: Updated ProfilingRunSummary interface
+  - Added component_energy_breakdown with all metrics
+  - Added component_energy_by_phase for phase-level analysis
+  - Added summary field to ProfilingRun interface
+
+Tests: npm run build passed successfully
+
+Reference: TokenPowerBench paper - E_total = E_GPU + E_CPU + E_DRAM + E_Others
+---

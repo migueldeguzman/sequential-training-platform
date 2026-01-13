@@ -268,6 +268,7 @@ export interface ProfilingRun {
   power_samples?: PowerSample[];
   pipeline_sections?: PipelineSection[];
   tokens?: TokenMetrics[];
+  summary?: ProfilingRunSummary;
 }
 
 export interface ProfilingRunSummary {
@@ -326,16 +327,35 @@ export interface ProfilingRunSummary {
     energy_per_output_token_mj: number;
     output_to_input_energy_ratio: number;
   };
-  component_energy_breakdown: {
+  component_energy_breakdown?: {
+    run_id: string;
     cpu_energy_mj: number;
     gpu_energy_mj: number;
     ane_energy_mj: number;
     dram_energy_mj: number;
-    cpu_percentage: number;
-    gpu_percentage: number;
-    ane_percentage: number;
-    dram_percentage: number;
+    total_energy_mj: number;
+    cpu_energy_percentage: number;
+    gpu_energy_percentage: number;
+    ane_energy_percentage: number;
+    dram_energy_percentage: number;
+    avg_cpu_power_mw: number;
+    avg_gpu_power_mw: number;
+    avg_ane_power_mw: number;
+    avg_dram_power_mw: number;
+    peak_cpu_power_mw: number;
+    peak_gpu_power_mw: number;
+    peak_ane_power_mw: number;
+    peak_dram_power_mw: number;
+    sample_count: number;
   };
+  component_energy_by_phase?: {
+    phase: string;
+    cpu_energy_mj: number;
+    gpu_energy_mj: number;
+    ane_energy_mj: number;
+    dram_energy_mj: number;
+    total_energy_mj: number;
+  }[];
 }
 
 // WebSocket message types

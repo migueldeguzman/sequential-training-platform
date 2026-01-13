@@ -9,6 +9,7 @@ import HeatmapChart from './charts/HeatmapChart';
 import TreemapChart from './charts/TreemapChart';
 import SankeyChart from './charts/SankeyChart';
 import DeepDrilldown from './DeepDrilldown';
+import ComponentBreakdownChart from './charts/ComponentBreakdownChart';
 
 interface AnalysisViewProps {
   run: ProfilingRun;
@@ -173,6 +174,72 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ run }) => {
           sections={run.pipeline_sections || []}
         />
       </div>
+
+      {/* Component Energy Breakdown */}
+      {run.summary?.component_energy_breakdown && (
+        <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4">
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+            Hardware Component Energy Distribution
+          </h3>
+          <div className="h-96">
+            <ComponentBreakdownChart
+              breakdown={run.summary.component_energy_breakdown}
+              phaseBreakdown={run.summary.component_energy_by_phase}
+              viewMode="total"
+            />
+          </div>
+          <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded">
+              <div className="text-blue-600 dark:text-blue-400 font-semibold">CPU</div>
+              <div className="text-gray-900 dark:text-gray-100 font-bold">
+                {run.summary.component_energy_breakdown.cpu_energy_mj.toFixed(1)} mJ
+              </div>
+              <div className="text-gray-600 dark:text-gray-400">
+                {run.summary.component_energy_breakdown.cpu_energy_percentage.toFixed(1)}% of total
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                Avg: {run.summary.component_energy_breakdown.avg_cpu_power_mw.toFixed(0)} mW
+              </div>
+            </div>
+            <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded">
+              <div className="text-green-600 dark:text-green-400 font-semibold">GPU</div>
+              <div className="text-gray-900 dark:text-gray-100 font-bold">
+                {run.summary.component_energy_breakdown.gpu_energy_mj.toFixed(1)} mJ
+              </div>
+              <div className="text-gray-600 dark:text-gray-400">
+                {run.summary.component_energy_breakdown.gpu_energy_percentage.toFixed(1)}% of total
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                Avg: {run.summary.component_energy_breakdown.avg_gpu_power_mw.toFixed(0)} mW
+              </div>
+            </div>
+            <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded">
+              <div className="text-orange-600 dark:text-orange-400 font-semibold">ANE</div>
+              <div className="text-gray-900 dark:text-gray-100 font-bold">
+                {run.summary.component_energy_breakdown.ane_energy_mj.toFixed(1)} mJ
+              </div>
+              <div className="text-gray-600 dark:text-gray-400">
+                {run.summary.component_energy_breakdown.ane_energy_percentage.toFixed(1)}% of total
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                Avg: {run.summary.component_energy_breakdown.avg_ane_power_mw.toFixed(0)} mW
+              </div>
+            </div>
+            <div className="bg-purple-50 dark:bg-purple-900/20 p-3 rounded">
+              <div className="text-purple-600 dark:text-purple-400 font-semibold">DRAM</div>
+              <div className="text-gray-900 dark:text-gray-100 font-bold">
+                {run.summary.component_energy_breakdown.dram_energy_mj.toFixed(1)} mJ
+              </div>
+              <div className="text-gray-600 dark:text-gray-400">
+                {run.summary.component_energy_breakdown.dram_energy_percentage.toFixed(1)}% of total
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                Avg: {run.summary.component_energy_breakdown.avg_dram_power_mw.toFixed(0)} mW
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Token Slider */}
       {run.tokens && run.tokens.length > 0 && (

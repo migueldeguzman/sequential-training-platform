@@ -1482,7 +1482,7 @@
       "title": "Component Energy Breakdown Chart",
       "description": "Visualize energy split across CPU, GPU, ANE, DRAM components",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "reference": "TokenPowerBench: E_total = E_GPU + E_CPU + E_DRAM + E_Others; GPUs ~60% of total",
       "steps": [
         "Calculate total energy per component from phase-tagged samples",
