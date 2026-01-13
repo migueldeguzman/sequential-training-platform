@@ -118,3 +118,30 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - Complex aggregation queries with JOINs and GROUP BY for summary statistics
 - Verified Python syntax with py_compile (no errors)
 
+### EP-009: Model Architecture Detector - COMPLETED
+- Created backend/profiling/model_detector.py with architecture detection capabilities
+- Implemented ComponentPaths dataclass for standardized component path storage
+- Implemented ModelArchitectureDetector class with detect() method
+- Added detection for Llama architecture (meta-llama models)
+  - Returns paths for q_proj, k_proj, v_proj, o_proj attention components
+  - Returns paths for gate_proj, up_proj, down_proj MLP components
+  - Returns paths for input_layernorm and post_attention_layernorm
+  - Detects RMSNorm usage in Llama models
+- Added detection for Mistral architecture (uses same structure as Llama)
+- Added detection for Phi architecture (microsoft/phi models)
+  - Supports both Phi-3 style (with gate_proj) and older Phi style (fc1/fc2)
+  - Detects LayerNorm usage in Phi models
+- Added detection for Qwen architecture (Qwen/Qwen2 models)
+  - Uses similar structure to Llama with RMSNorm
+- Implemented fallback detection for unknown architectures
+  - Attempts to infer structure by inspecting model attributes
+  - Searches for layers in model.layers, model.model.layers, or transformer.h
+  - Detects attention component naming (self_attn vs attn)
+  - Detects MLP component naming (gate_proj/up_proj/down_proj vs fc1/fc2)
+  - Detects norm type (RMSNorm vs LayerNorm) by class name inspection
+  - Logs warnings when using fallback detection
+- Added structure detection helper methods (_is_llama_structure, _is_mistral_structure, etc.)
+- Added comprehensive logging throughout detection process
+- Added convenience function detect_model_architecture(model)
+- Verified Python syntax with py_compile (no errors)
+

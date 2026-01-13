@@ -228,7 +228,7 @@
       "title": "Model Architecture Detector",
       "description": "Auto-detect transformer model architecture for hook registration",
       "priority": "CRITICAL",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Create backend/profiling/model_detector.py",
         "Implement detection for Llama architecture",
