@@ -1930,6 +1930,68 @@ async def get_profiling_run(run_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to retrieve profiling run: {str(e)}")
 
 
+@app.get("/api/profiling/run/{run_id}/summary")
+async def get_profiling_run_summary(run_id: str):
+    """
+    Get aggregated summary statistics for a profiling run.
+
+    This endpoint returns summary metrics including:
+    - Total duration and energy
+    - Per-phase breakdown (pre_inference, prefill, decode, post_inference)
+    - Average metrics per layer (across all tokens)
+    - Average metrics per component (across all layers and tokens)
+    - Hottest components (top 10 by energy consumption)
+
+    Args:
+        run_id: Unique identifier for the profiling run
+
+    Returns:
+        Summary statistics dictionary with aggregated metrics
+    """
+    from profiling.database import ProfileDatabase
+
+    try:
+        database = ProfileDatabase()
+        database.connect()
+
+        # Get summary from database (which calculates all required metrics)
+        summary = database.get_run_summary(run_id)
+
+        database.close()
+
+        if not summary:
+            raise HTTPException(status_code=404, detail=f"Profiling run {run_id} not found")
+
+        # Calculate total duration and energy from phase breakdown
+        total_duration_ms = 0
+        total_energy_mj = 0
+        if "phase_breakdown" in summary:
+            for phase in summary["phase_breakdown"]:
+                total_duration_ms += phase.get("total_duration_ms", 0) or 0
+                total_energy_mj += phase.get("total_energy_mj", 0) or 0
+
+        # Add calculated totals to summary
+        summary["total_duration_ms"] = total_duration_ms
+        summary["total_energy_mj"] = total_energy_mj
+
+        # Calculate derived metrics
+        if total_duration_ms > 0:
+            summary["avg_power_mw"] = (total_energy_mj / total_duration_ms) * 1000 if total_duration_ms > 0 else 0
+
+        # Add token counts if available
+        token_count = summary.get("token_count", 0)
+        if token_count and total_duration_ms > 0:
+            summary["tokens_per_second"] = (token_count / total_duration_ms) * 1000
+
+        return summary
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to retrieve profiling run summary {run_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve profiling run summary: {str(e)}")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

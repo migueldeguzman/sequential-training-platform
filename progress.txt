@@ -1004,3 +1004,51 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - Verified Python syntax with py_compile (no errors)
 - Updated PRD: EP-029 passes = true
 
+### EP-030: Profiling Run Summary Endpoint - COMPLETED
+- Implemented GET /api/profiling/run/{run_id}/summary endpoint in backend/main.py (lines 1933-1992)
+  - Retrieves aggregated summary statistics for a profiling run
+  - Leverages ProfileDatabase.get_run_summary() method for efficient aggregation
+  - Returns comprehensive summary metrics including:
+    * Total duration and energy calculated from phase breakdown
+    * Per-phase breakdown (pre_inference, prefill, decode, post_inference)
+      - Each phase includes: total_duration_ms, total_energy_mj, avg_power_mw, section_count
+    * Average metrics per layer (across all tokens)
+      - Includes: layer_index, avg_duration_ms, avg_energy_mj, avg_power_mw, token_count
+    * Average metrics per component (across all layers and tokens)
+      - Includes: component_name, avg_duration_ms, avg_energy_mj, avg_power_mw
+      - Includes: avg_activation_mean, avg_activation_std, avg_activation_max, avg_activation_sparsity
+      - Includes: occurrence_count
+      - Sorted by avg_energy_mj DESC to highlight most expensive components
+    * Hottest components (top 10 by energy consumption)
+      - Same structure as component_averages but limited to top 10
+  - Calculates derived metrics:
+    * total_duration_ms: Sum of all phase durations
+    * total_energy_mj: Sum of all phase energies
+    * avg_power_mw: (total_energy_mj / total_duration_ms) × 1000
+    * tokens_per_second: (token_count / total_duration_ms) × 1000 (if token_count available)
+  - Uses database.get_run_summary() which executes efficient SQL aggregations:
+    * GROUP BY phase for phase breakdown
+    * GROUP BY layer_index for layer averages with AVG() and COUNT()
+    * GROUP BY component_name for component averages with AVG() and COUNT()
+    * JOIN across layer_metrics, component_metrics, and tokens tables
+  - Comprehensive error handling:
+    * HTTPException for 404 when run not found
+    * HTTPException with 500 status for database errors
+    * Re-raises HTTPException to preserve error codes
+    * Logs all errors with detailed messages
+  - Proper resource management:
+    * Closes database connection after query completion
+    * try/except blocks protect against partial data retrieval
+  - API response structure:
+    * All run metadata fields from profiling_runs table
+    * phase_breakdown: List of per-phase aggregated metrics
+    * layer_averages: List of per-layer aggregated metrics
+    * component_averages: List of per-component aggregated metrics
+    * hottest_components: Top 10 most energy-intensive components
+    * total_duration_ms: Calculated total duration
+    * total_energy_mj: Calculated total energy
+    * avg_power_mw: Calculated average power draw
+    * tokens_per_second: Calculated throughput (if applicable)
+- Verified Python syntax with py_compile (no errors)
+- Updated PRD: EP-030 passes = true
+

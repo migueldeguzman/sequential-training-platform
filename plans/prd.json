@@ -546,7 +546,7 @@
       "title": "Profiling Run Summary Endpoint",
       "description": "Create endpoint for aggregated run statistics",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Implement GET /api/profiling/run/{id}/summary endpoint",
         "Calculate total duration and energy",
