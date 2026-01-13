@@ -195,3 +195,20 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - All timing capture features now fully thread-safe and concurrent-ready
 - Verified Python syntax with py_compile (no errors)
 
+### EP-012: LayerProfiler Class - Activation Statistics - COMPLETED
+- Verified all activation statistics already implemented in LayerProfiler post-hook
+- Activation statistics captured from hook outputs (lines 218-241 in layer_profiler.py):
+  - activation_mean: computed using output.abs().mean().item() (line 235)
+  - activation_std: computed using output.std().item() (line 236)
+  - activation_max: computed using output.abs().max().item() (line 237)
+  - activation_sparsity: computed as fraction of near-zero values (lines 240-241)
+    - Uses (output.abs() < threshold).float().mean().item()
+- Sparsity threshold is configurable via __init__ parameter (default: 1e-4)
+- Statistics stored per component per forward pass in ComponentTiming dataclass
+- Handles tuple outputs from modules that return multiple values (lines 223-226)
+- Uses torch.mps.synchronize() on Apple Silicon for accurate measurements (lines 231-232)
+- Error handling with logging for any statistics capture failures (lines 243-244)
+- Feature already implemented in EP-010 and EP-011, now formally verified
+- Verified Python syntax with py_compile (no errors)
+- Updated PRD: EP-012 passes = true
+

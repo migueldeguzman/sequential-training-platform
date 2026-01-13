@@ -275,7 +275,7 @@
       "title": "LayerProfiler Class - Activation Statistics",
       "description": "Capture activation statistics from hook outputs",
       "priority": "CRITICAL",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Capture activation mean (output.abs().mean())",
         "Capture activation std (output.std())",
