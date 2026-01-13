@@ -327,6 +327,71 @@ class InferencePipelineProfiler:
 
         logger.info(f"Saved run {session.run_id} with {len(power_samples)} power samples and {len(session.sections)} sections")
 
+    # Pre-Inference Phase Profiling Helpers
+    def profile_tokenization(self, session: ProfilingSession, tokenizer, prompt: str):
+        """
+        Profile tokenization step with automatic section timing.
+
+        Args:
+            session: Active ProfilingSession from run() context manager
+            tokenizer: Tokenizer instance
+            prompt: Input prompt text
+
+        Returns:
+            Tokenized output (tokens/input_ids)
+
+        Example:
+            with profiler.run("Hello", "llama-7b") as session:
+                tokens = profiler.profile_tokenization(session, tokenizer, prompt)
+        """
+        with session.section("tokenization", "pre_inference"):
+            tokens = tokenizer.encode(prompt)
+        return tokens
+
+    def profile_tensor_transfer(self, session: ProfilingSession, tensor, device: str):
+        """
+        Profile tensor transfer to device with automatic section timing.
+
+        Args:
+            session: Active ProfilingSession from run() context manager
+            tensor: Input tensor to transfer
+            device: Target device (e.g., "mps", "cuda", "cpu")
+
+        Returns:
+            Transferred tensor
+
+        Example:
+            with profiler.run("Hello", "llama-7b") as session:
+                tokens = profiler.profile_tokenization(session, tokenizer, prompt)
+                tokens = profiler.profile_tensor_transfer(session, tokens, "mps")
+        """
+        with session.section("tensor_transfer", "pre_inference"):
+            transferred = tensor.to(device)
+        return transferred
+
+    def profile_kv_cache_init(self, session: ProfilingSession, init_func, *args, **kwargs):
+        """
+        Profile KV-cache initialization with automatic section timing.
+
+        Args:
+            session: Active ProfilingSession from run() context manager
+            init_func: Function that initializes KV-cache
+            *args: Positional arguments for init_func
+            **kwargs: Keyword arguments for init_func
+
+        Returns:
+            Result from init_func
+
+        Example:
+            with profiler.run("Hello", "llama-7b") as session:
+                tokens = profiler.profile_tokenization(session, tokenizer, prompt)
+                tokens = profiler.profile_tensor_transfer(session, tokens, "mps")
+                cache = profiler.profile_kv_cache_init(session, model.init_kv_cache, batch_size=1)
+        """
+        with session.section("kv_cache_init", "pre_inference"):
+            result = init_func(*args, **kwargs)
+        return result
+
 
 # Add section() method to ProfilingSession
 def _session_section(self, section_name: str, phase: str):

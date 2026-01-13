@@ -565,3 +565,28 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - Verified Python syntax with py_compile (no errors)
 - Updated PRD: EP-020 passes = true
 
+### EP-021: InferencePipelineProfiler - Pre-Inference Phase - COMPLETED
+- Implemented pre-inference phase profiling helper methods in InferencePipelineProfiler
+- Added profile_tokenization() method (lines 331-349):
+  - Wraps tokenizer.encode() with section timing
+  - Uses session.section("tokenization", "pre_inference") context manager
+  - Returns tokenized output for pipeline continuation
+  - Comprehensive docstring with usage example
+- Added profile_tensor_transfer() method (lines 351-370):
+  - Wraps tensor.to(device) with section timing
+  - Uses session.section("tensor_transfer", "pre_inference") context manager
+  - Supports any device target (mps, cuda, cpu)
+  - Returns transferred tensor for pipeline continuation
+  - Comprehensive docstring with usage example
+- Added profile_kv_cache_init() method (lines 372-393):
+  - Wraps KV-cache initialization function with section timing
+  - Uses session.section("kv_cache_init", "pre_inference") context manager
+  - Accepts arbitrary init function with *args and **kwargs for flexibility
+  - Returns result from init_func for pipeline continuation
+  - Comprehensive docstring with usage example
+- All methods leverage existing section() context manager for automatic energy correlation
+- Pre-inference metrics automatically stored in session.sections list
+- Database integration already handled by existing _save_run_to_database() method
+- Verified Python syntax with py_compile (no errors)
+- Updated PRD: EP-021 passes = true
+

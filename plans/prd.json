@@ -408,7 +408,7 @@
       "title": "InferencePipelineProfiler - Pre-Inference Phase",
       "description": "Profile pre-inference operations",
       "priority": "CRITICAL",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Wrap tokenizer.encode() with section timing",
         "Wrap tensor.to(device) with section timing",
