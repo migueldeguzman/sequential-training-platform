@@ -1691,3 +1691,59 @@ Features: powermetrics integration, per-layer/per-token profiling, SQLite storag
 - Integrated with ProfilingContext for state management
 - All form controls properly disabled during profiling
 - Verified TypeScript compilation with npm run build (successful)
+
+## 2026-01-14
+### EP-046: Frontend - PowerTimeSeriesChart Component - COMPLETED
+- Created src/components/profiling/charts/PowerTimeSeriesChart.tsx with Canvas-based rendering
+- Implemented high-performance real-time power visualization:
+  - Canvas rendering with high DPI support (window.devicePixelRatio scaling)
+  - Efficient redraw on sample updates with useEffect hook
+  - Smooth animations as new power samples arrive
+- Power line plots with color-coded components:
+  - CPU power line (blue #3b82f6)
+  - GPU power line (green #10b981)
+  - ANE power line (orange #f59e0b)
+  - DRAM power line (purple #a855f7)
+  - Total power line (red #ef4444)
+- Chart features:
+  - Automatic scaling based on max power in visible samples
+  - Grid lines with power (mW) on Y-axis and time (seconds) on X-axis
+  - Axis labels: "Power (mW)" and "Time (seconds)"
+  - Configurable padding and layout
+- Legend display:
+  - Shows all power components with color-coded line samples
+  - Positioned on the right side of chart
+  - Clear labeling for each metric
+- Auto-scroll functionality:
+  - Configurable via autoScroll prop (default: true)
+  - Configurable window duration via windowDurationMs prop (default: 30000ms = 30s)
+  - Automatically scrolls timeline as new samples arrive
+  - Shows most recent 30 seconds of data in real-time mode
+  - Supports full timeline view when autoScroll disabled
+- Interactive hover features:
+  - Mouse move handler tracks cursor position
+  - Finds nearest power sample to cursor
+  - Displays vertical hover line at sample timestamp
+  - Shows detailed tooltip with all power metrics:
+    - Timestamp in seconds
+    - Total, CPU, GPU, ANE, DRAM power values
+  - Tooltip intelligently positions to avoid overflow (left/right based on cursor)
+  - Crosshair cursor when hovering over data
+  - Hover state clears on mouse leave
+- Responsive design:
+  - Configurable width and height props
+  - Maintains aspect ratio and proper scaling
+  - Custom className support for styling integration
+- Error handling:
+  - "No data available" message when samples array empty
+  - Graceful handling of missing optional fields (ane_power_mw, dram_power_mw)
+  - Safe filtering of samples to visible time range
+- TypeScript type safety:
+  - Uses PowerSample interface from @/types
+  - Proper typing for all props and internal state
+  - Type-safe hover point state management
+- Fixed all TypeScript compilation errors:
+  - Corrected PowerSample field name from timestamp_ms to timestamp
+  - Suppressed eslint warning for chartHeight variable in mouse handler
+- Verified TypeScript compilation with npm run build (successful)
+- Updated PRD: EP-046 passes = true
