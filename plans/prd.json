@@ -826,7 +826,7 @@
       "title": "Frontend - CurrentOperationIndicator Component",
       "description": "Show current operation being profiled",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Create src/components/profiling/CurrentOperationIndicator.tsx",
         "Show current phase (pre/prefill/decode/post)",

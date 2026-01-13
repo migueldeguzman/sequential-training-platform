@@ -1823,3 +1823,51 @@ Component features:
 - TypeScript type safety with TokenMetrics interface
 - Verified TypeScript compilation with npm run build (successful)
 - Updated PRD: EP-048 passes = true
+
+
+### EP-049: Frontend - CurrentOperationIndicator Component - COMPLETED
+- Created src/components/profiling/CurrentOperationIndicator.tsx with real-time operation tracking
+- Phase-specific visual indicators with color-coded UI:
+  - Pre-Inference: Blue with 🔧 icon
+  - Prefill: Purple with 📝 icon
+  - Decode: Green with ⚡ icon
+  - Post-Inference: Orange with ✅ icon
+  - Idle: Gray with ⏸️ icon
+- Real-time section display with formatted section names (snake_case to Title Case)
+- Current token information display during decode phase:
+  - Token position number
+  - Token text preview
+  - Duration and energy metrics
+- Animated transitions between operations:
+  - Bounce animation on phase icon during profiling
+  - Pulsing progress bar at top of indicator
+  - Smooth color and scale transitions
+- Visual progress tracking:
+  - Timeline dots showing phase progression
+  - Token count progress bar during decode phase
+  - Status badge when idle/ready
+- Contextual information display:
+  - Phase label and icon
+  - Section name with proper formatting
+  - Token metrics for decode phase
+  - Ready status when not profiling
+- Smooth animations and transitions:
+  - Bounce animation on active icon (1s ease-in-out infinite)
+  - Scale transform on icon when profiling (110%)
+  - Opacity transitions for text
+  - 300ms duration for all state changes
+  - 500ms duration for border/background changes
+- Phase timeline visualization at bottom:
+  - Dots representing each phase (pre, prefill, decode, post)
+  - Active phase highlighted with scale and color
+  - Past phases shown in gray
+  - Connector lines between phases
+- Responsive layout with proper spacing and alignment
+- Dark mode optimized color scheme
+- Uses ProfilingContext for real-time data:
+  - currentSection for phase and section tracking
+  - isProfiling for status display
+  - tokens array for decode phase progress
+- TypeScript type safety throughout
+- Verified TypeScript compilation with npm run build (successful)
+- Updated PRD: EP-049 passes = true
