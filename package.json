@@ -10,6 +10,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
     "setup:backend": "cd backend && python -m venv venv && . venv/bin/activate && pip install -r requirements.txt"
   },
   "dependencies": {
@@ -21,14 +24,20 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",
+    "@testing-library/jest-dom": "^6.1.5",
+    "@testing-library/react": "^14.1.2",
+    "@testing-library/user-event": "^14.5.1",
     "@types/d3": "^7.4.3",
     "@types/d3-sankey": "^0.12.4",
+    "@types/jest": "^29.5.11",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "concurrently": "^9.2.1",
     "eslint": "^9",
     "eslint-config-next": "^15",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"

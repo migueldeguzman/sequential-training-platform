@@ -1,0 +1,15 @@
+
+---
+
+Date: 2026-01-14
+Feature: EP-080 - Long Context Energy Analysis
+Status: Completed
+
+Files Modified:
+- backend/profiling/database.py (added KV cache fields + analysis method)
+- backend/main.py (added /api/profiling/long-context-analysis endpoint)
+
+Files Created:
+- src/components/profiling/LongContextAnalysis.tsx (320 lines)
+
+Testing: npm build passed, Python syntax check passed

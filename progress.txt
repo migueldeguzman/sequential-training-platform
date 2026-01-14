@@ -3116,3 +3116,61 @@ Notes:
 - High/low energy token tables enable pattern discovery
 - Supports filtering to focus on specific energy ranges
 - Integrated seamlessly into Analysis View as new tab
+
+
+---
+
+Date: 2026-01-14
+Feature: EP-073 - Testing - Frontend Component Tests
+Status: Completed
+
+Description:
+Implemented comprehensive Jest and React Testing Library tests for React profiling components.
+
+Files Created:
+- jest.config.js (Jest configuration for Next.js)
+- jest.setup.js (Test setup with mocks for Canvas, WebSocket, ResizeObserver)
+- src/components/profiling/__tests__/EnergyProfilerPanel.test.tsx (6 tests)
+- src/components/profiling/__tests__/ProfilingControls.test.tsx (11 tests)
+- src/components/profiling/__tests__/ProfilingContext.test.tsx (12 tests)
+- src/components/profiling/charts/__tests__/PowerTimeSeriesChart.test.tsx (6 tests)
+- src/components/profiling/charts/__tests__/HeatmapChart.test.tsx (8 tests)
+- src/lib/__tests__/profilingWebsocket.test.ts (11 tests)
+
+Files Modified:
+- package.json (added Jest, Testing Library dependencies and test scripts)
+
+Test Coverage:
+1. EnergyProfilerPanel rendering: Title, description, tabs, tab switching, provider integration
+2. ProfilingControls interactions: Form inputs, validation, profiling depth, temperature, max length
+3. Chart components with mock data: Canvas rendering, data updates, props handling, click events
+4. WebSocket hook behavior: Connection management, message handling, error handling, reconnection
+5. Context state management: Initial state, actions, profiling lifecycle, state updates, error handling
+
+Total Tests: 54 tests across 6 test files
+
+Testing Dependencies Added:
+- @testing-library/jest-dom@^6.1.5
+- @testing-library/react@^14.1.2
+- @testing-library/user-event@^14.5.1
+- @types/jest@^29.5.11
+- jest@^29.7.0
+- jest-environment-jsdom@^29.7.0
+
+Test Scripts Added:
+- npm test (run all tests)
+- npm run test:watch (watch mode)
+- npm run test:coverage (with coverage report)
+
+Build Verification:
+- npm run build: SUCCESS (passes with only warnings, no errors)
+- TypeScript compilation: PASSED
+- All React components tested with proper mocking
+
+Notes:
+- Tests use Jest with jsdom environment for React component testing
+- Canvas API mocked for chart component tests
+- WebSocket API mocked for real-time profiling tests
+- All tests follow best practices with proper cleanup and isolation
+- Tests cover happy paths, edge cases, and error scenarios
+- Ready for CI/CD integration
