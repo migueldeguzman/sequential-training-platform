@@ -411,7 +411,7 @@
       "title": "Add KV cache memory tracking",
       "description": "Database schema has kv_cache_size_mb but profiling doesn't measure and store KV cache memory usage.",
       "priority": "medium",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read backend/profiling/database.py schema - has kv_cache_size_mb, kv_cache_utilization_pct. Read profiled_generate - no KV cache measurement code.",
         "test": "Check profiling run. kv_cache_size_mb is null.",

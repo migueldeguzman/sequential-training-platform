@@ -2215,6 +2215,60 @@ async def profiled_generate(request: ProfiledGenerateRequest):
             with session.section("detokenization", phase="post_inference"):
                 session.response = response
 
+            # Calculate KV cache size after generation (BUG-032)
+            # KV cache stores key and value tensors for each layer and token
+            try:
+                if hasattr(model.config, 'num_hidden_layers') and hasattr(model.config, 'hidden_size'):
+                    num_layers = model.config.num_hidden_layers
+                    hidden_size = model.config.hidden_size
+                    num_heads = getattr(model.config, 'num_attention_heads', 0)
+                    num_kv_heads = getattr(model.config, 'num_key_value_heads', num_heads)  # For GQA models
+
+                    # Calculate head dimension
+                    if num_heads > 0:
+                        head_dim = hidden_size // num_heads
+                    else:
+                        head_dim = 0
+
+                    # Total sequence length (input + output tokens)
+                    total_seq_len = (session.input_token_count or 0) + (session.output_token_count or 0)
+
+                    # KV cache size calculation:
+                    # - num_layers: number of transformer layers
+                    # - 2: separate cache for keys and values
+                    # - total_seq_len: cache grows with sequence length
+                    # - num_kv_heads: number of key-value heads (may differ from query heads in GQA)
+                    # - head_dim: dimension of each head
+                    # - dtype_size: bytes per element (2 for FP16, 4 for FP32)
+
+                    # Determine dtype size from model
+                    dtype_size = 2  # Default to FP16
+                    if hasattr(model, 'dtype'):
+                        if model.dtype == torch.float32:
+                            dtype_size = 4
+                        elif model.dtype == torch.float16 or model.dtype == torch.bfloat16:
+                            dtype_size = 2
+
+                    # Calculate total KV cache size in bytes
+                    kv_cache_size_bytes = num_layers * 2 * total_seq_len * num_kv_heads * head_dim * dtype_size
+
+                    # Convert to megabytes
+                    kv_cache_size_mb = kv_cache_size_bytes / (1024 * 1024)
+
+                    # Store in session for database
+                    session.kv_cache_size_mb = kv_cache_size_mb
+                    session.context_length = total_seq_len
+
+                    logger.info(f"Calculated KV cache size: {kv_cache_size_mb:.2f} MB for {total_seq_len} tokens across {num_layers} layers")
+                else:
+                    logger.warning("Could not calculate KV cache size: missing model config attributes")
+                    session.kv_cache_size_mb = None
+                    session.context_length = None
+            except Exception as e:
+                logger.warning(f"Failed to calculate KV cache size: {e}")
+                session.kv_cache_size_mb = None
+                session.context_length = None
+
         # Data is automatically saved to database via profiler.run context manager
         # Cleanup is handled automatically by the context manager's finally block
         result = {

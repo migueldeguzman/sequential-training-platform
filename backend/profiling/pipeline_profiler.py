@@ -89,6 +89,8 @@ class ProfilingSession:
     baseline_metrics: Optional[Dict[str, float]] = None
     input_token_count: Optional[int] = None
     output_token_count: Optional[int] = None
+    kv_cache_size_mb: Optional[float] = None
+    context_length: Optional[int] = None
 
     # References to profiling components
     power_monitor: Optional[PowerMonitor] = None
@@ -508,6 +510,8 @@ class InferencePipelineProfiler:
             baseline_ane_power_mw=session.baseline_metrics.get('baseline_ane_power_mw') if session.baseline_metrics else None,
             baseline_dram_power_mw=session.baseline_metrics.get('baseline_dram_power_mw') if session.baseline_metrics else None,
             baseline_sample_count=session.baseline_metrics.get('baseline_sample_count') if session.baseline_metrics else None,
+            kv_cache_size_mb=session.kv_cache_size_mb,
+            context_length=session.context_length,
             cost_usd=cost_usd,
             co2_grams=co2_grams,
             status="completed"
