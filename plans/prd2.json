@@ -294,7 +294,7 @@
       "title": "Fix database path resolution",
       "description": "ProfileDatabase uses relative path 'backend/profiling.db' which may fail depending on working directory when server starts.",
       "priority": "low",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read backend/profiling/database.py __init__. Default path is 'backend/profiling.db'. Read backend/main.py where database is initialized.",
         "test": "Start server from different directory. Database may fail to create or use wrong location.",

@@ -11,6 +11,7 @@ import sqlite3
 from typing import Optional
 from pathlib import Path
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -18,12 +19,23 @@ logger = logging.getLogger(__name__)
 class ProfileDatabase:
     """SQLite database manager for profiling data."""
 
-    def __init__(self, db_path: str = "backend/profiling.db"):
+    def __init__(self, db_path: Optional[str] = None):
         """Initialize database connection.
 
         Args:
-            db_path: Path to SQLite database file
+            db_path: Path to SQLite database file. If None, uses DATABASE_PATH environment
+                    variable or defaults to <backend_dir>/profiling.db
         """
+        if db_path is None:
+            # Check for environment variable first
+            db_path = os.environ.get("DATABASE_PATH")
+
+            if db_path is None:
+                # Default to absolute path relative to backend directory
+                # Get the directory where this file (database.py) is located
+                backend_dir = Path(__file__).resolve().parent.parent
+                db_path = str(backend_dir / "profiling.db")
+
         self.db_path = db_path
         self.conn: Optional[sqlite3.Connection] = None
 
@@ -69,7 +81,9 @@ class ProfileDatabase:
                     self.conn.close()
                 raise
 
-            logger.info(f"Connected to profiling database at {self.db_path}")
+            # Log database location with absolute path for clarity
+            abs_path = Path(self.db_path).resolve()
+            logger.info(f"Connected to profiling database at {abs_path}")
 
         except Exception as e:
             logger.error(f"Database connection failed: {str(e)}")
@@ -1864,11 +1878,12 @@ class ProfileDatabase:
         }
 
 
-def init_database(db_path: str = "backend/profiling.db") -> ProfileDatabase:
+def init_database(db_path: Optional[str] = None) -> ProfileDatabase:
     """Initialize and return a connected ProfileDatabase instance.
 
     Args:
-        db_path: Path to SQLite database file
+        db_path: Path to SQLite database file. If None, uses DATABASE_PATH environment
+                variable or defaults to <backend_dir>/profiling.db
 
     Returns:
         Connected ProfileDatabase instance
