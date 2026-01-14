@@ -10,12 +10,13 @@ import TreemapChart from './charts/TreemapChart';
 import SankeyChart from './charts/SankeyChart';
 import DeepDrilldown from './DeepDrilldown';
 import ComponentBreakdownChart from './charts/ComponentBreakdownChart';
+import TokenEnergyAnalysis from './TokenEnergyAnalysis';
 
 interface AnalysisViewProps {
   run: ProfilingRun;
 }
 
-type VisualizationType = 'heatmap' | 'treemap' | 'sankey';
+type VisualizationType = 'heatmap' | 'treemap' | 'sankey' | 'token-energy';
 
 const AnalysisView: React.FC<AnalysisViewProps> = ({ run }) => {
   // State management
@@ -285,6 +286,16 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ run }) => {
           >
             Sankey
           </button>
+          <button
+            onClick={() => setSelectedVisualization('token-energy')}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+              selectedVisualization === 'token-energy'
+                ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 border-b-2 border-blue-500'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+            }`}
+          >
+            Token Energy
+          </button>
         </div>
       </div>
 
@@ -329,6 +340,10 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ run }) => {
               links={sankeyData.links}
             />
           </div>
+        )}
+
+        {selectedVisualization === 'token-energy' && (
+          <TokenEnergyAnalysis run={run} />
         )}
       </div>
 

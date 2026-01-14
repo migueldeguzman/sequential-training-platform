@@ -3082,3 +3082,37 @@ Files Created:
 - src/components/profiling/LongContextAnalysis.tsx (320 lines)
 
 Testing: npm build passed, Python syntax check passed
+
+
+---
+
+Date: 2026-01-14
+Feature: EP-082 - Token-Level Energy Visualization
+Status: Completed
+
+Files Created:
+- src/components/profiling/charts/TokenEnergyHeatmap.tsx (350 lines)
+- src/components/profiling/charts/TokenEnergyDistribution.tsx (240 lines)
+- src/components/profiling/TokenEnergyAnalysis.tsx (330 lines)
+
+Files Modified:
+- src/components/profiling/AnalysisView.tsx (added Token Energy tab)
+
+Features Implemented:
+- Token energy distribution histogram with statistics
+- Token-layer energy heatmap with multi-metric support (energy, duration, activation_mean, sparsity)
+- High-energy token identification (> mean + 1σ) with detailed table
+- Low-energy token identification (< mean - 0.5σ) with detailed table
+- Energy threshold filtering
+- Color-coded token visualization (blue→yellow→red gradient)
+- Interactive hover tooltips
+- Multiple metric views for comprehensive analysis
+
+Testing: npm build passed with only warnings (no errors)
+
+Notes:
+- Heatmap shows energy consumption across token positions and transformer layers
+- Distribution histogram reveals energy patterns and outliers
+- High/low energy token tables enable pattern discovery
+- Supports filtering to focus on specific energy ranges
+- Integrated seamlessly into Analysis View as new tab

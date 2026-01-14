@@ -1346,7 +1346,7 @@
       "title": "Token-Level Energy Visualization",
       "description": "Enhanced per-token energy visualization showing patterns",
       "priority": "MEDIUM",
-      "passes": false,
+      "passes": true,
       "reference": "Paper analyzes energy per prompt; we go deeper with per-token granularity",
       "steps": [
         "Color-code tokens by energy consumption intensity",
