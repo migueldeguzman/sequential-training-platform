@@ -3224,3 +3224,18 @@ Notes:
 - Based on TokenPowerBench: EDP = Energy × Delay is key metric for comparing configurations
 - Verified TypeScript compilation with npm run build (SUCCESS)
 - All EDP calculations automatically performed on database query
+
+2026-01-14 | EP-079 | COMPLETED | Energy Prediction Model
+- Implemented energy prediction ML model in backend/profiling/energy_predictor.py
+- Uses linear regression with architectural and prompt features
+- Feature vector includes: num_layers, hidden_size, attention mechanism, input/output tokens
+- Based on Caravaca et al. 2025 findings: layers scale linearly, dimension scales quadratically
+- Added /api/profiling/predict endpoint for pre-inference energy estimation
+- Added /api/profiling/train-predictor endpoint for manual model training
+- Model automatically trains on first prediction if not already trained
+- Predicts total energy, prefill/decode split, energy per token
+- Provides 95% confidence intervals for predictions
+- Uses JSON serialization (not pickle) for security
+- Minimum 5 profiling runs required for training
+- Supports what-if analysis and model comparison before running inference
+- Model stored in backend/profiling/energy_model.json

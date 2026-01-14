@@ -1297,7 +1297,7 @@
       "title": "Energy Prediction Model",
       "description": "Build ML model to predict energy consumption before running inference",
       "priority": "LOW",
-      "passes": false,
+      "passes": true,
       "reference": "Paper achieves R²=0.92-0.98 with Random Forest using architectural + prompt features",
       "steps": [
         "Create backend/profiling/energy_predictor.py",

@@ -3345,6 +3345,209 @@ async def cleanup_profiling_runs(
             db.close()
 
 
+@app.post("/api/profiling/predict")
+async def predict_energy(
+    model_name: str,
+    input_tokens: int,
+    output_tokens: int,
+    batch_size: int = 1
+):
+    """
+    Predict energy consumption before running inference.
+
+    Uses a machine learning model trained on historical profiling data to estimate
+    energy consumption based on model architecture and prompt characteristics.
+
+    Body Parameters:
+        model_name: Name of the model to predict for
+        input_tokens: Number of input tokens (prompt length)
+        output_tokens: Number of output tokens to generate
+        batch_size: Batch size for inference (default: 1)
+
+    Returns:
+        {
+            "predicted_total_energy_mj": float,
+            "predicted_prefill_energy_mj": float,
+            "predicted_decode_energy_mj": float,
+            "predicted_energy_per_token_mj": float,
+            "confidence_interval_95_pct": [lower, upper],
+            "model_accuracy_r2": float,
+            "features_used": list[str],
+            "prediction_notes": str (optional)
+        }
+
+    Example:
+        POST /api/profiling/predict
+        {
+            "model_name": "llama-3.2-1b",
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "batch_size": 1
+        }
+    """
+    from .profiling.energy_predictor import EnergyPredictor, prepare_training_data_from_database
+    from .profiling.model_features import extract_model_features
+
+    db = None
+    try:
+        # Validate parameters
+        if input_tokens < 1:
+            raise HTTPException(status_code=400, detail="input_tokens must be >= 1")
+        if output_tokens < 1:
+            raise HTTPException(status_code=400, detail="output_tokens must be >= 1")
+        if batch_size < 1:
+            raise HTTPException(status_code=400, detail="batch_size must be >= 1")
+
+        # Initialize predictor
+        predictor = EnergyPredictor()
+
+        # If model not trained, try to train on existing data
+        if not predictor.is_trained:
+            db = ProfileDatabase()
+            db.connect()
+
+            training_data = prepare_training_data_from_database(db)
+
+            if len(training_data) < 5:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Not enough training data. Need at least 5 completed profiling runs, found {len(training_data)}. Run more profiling sessions first."
+                )
+
+            # Train the model
+            metrics = predictor.train(training_data)
+            predictor.save_model()
+
+            logger.info(f"Trained energy predictor: R²={metrics['r2']:.4f}")
+
+        # Get model features
+        # For simplicity, we'll need to load the model or use cached features
+        # In production, you'd cache this or require it as input
+        try:
+            from transformers import AutoConfig
+            config = AutoConfig.from_pretrained(model_name)
+
+            # Create a minimal model features dict from config
+            model_features = {
+                "num_layers": getattr(config, "num_hidden_layers", 0),
+                "hidden_size": getattr(config, "hidden_size", 0),
+                "intermediate_size": getattr(config, "intermediate_size", 0),
+                "num_attention_heads": getattr(config, "num_attention_heads", 0),
+                "num_key_value_heads": getattr(config, "num_key_value_heads", None),
+                "total_params": getattr(config, "num_parameters", 0),
+                "attention_mechanism": "MHA",  # Default, could be detected
+                "is_moe": False,  # Default, could be detected
+            }
+        except Exception as e:
+            # If model not available, try to find features from previous runs
+            if db is None:
+                db = ProfileDatabase()
+                db.connect()
+
+            runs = db.get_runs(filters={"model_name": model_name, "status": "completed"})
+            if not runs:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Model '{model_name}' not found. Either load the model or run a profiling session with it first."
+                )
+
+            # Use features from most recent run
+            latest_run = runs[0]
+            model_features = {
+                "num_layers": latest_run.get("num_layers", 0),
+                "hidden_size": latest_run.get("hidden_size", 0),
+                "intermediate_size": latest_run.get("intermediate_size", 0),
+                "num_attention_heads": latest_run.get("num_attention_heads", 0),
+                "num_key_value_heads": latest_run.get("num_key_value_heads"),
+                "total_params": latest_run.get("total_params", 0),
+                "attention_mechanism": latest_run.get("attention_mechanism", "MHA"),
+                "is_moe": latest_run.get("is_moe", False),
+            }
+
+        # Make prediction
+        prediction = predictor.predict(
+            model_features=model_features,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            batch_size=batch_size,
+        )
+
+        return prediction.to_dict()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to predict energy: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to predict energy: {str(e)}"
+        )
+    finally:
+        if db:
+            db.close()
+
+
+@app.post("/api/profiling/train-predictor")
+async def train_energy_predictor():
+    """
+    Train the energy prediction model on all completed profiling runs.
+
+    This endpoint manually triggers training of the prediction model.
+    The model is automatically trained when first prediction is requested,
+    but this can be used to retrain after accumulating more data.
+
+    Returns:
+        {
+            "success": bool,
+            "metrics": {
+                "r2": float,
+                "mae": float,
+                "rmse": float,
+                "n_samples": int
+            },
+            "message": str
+        }
+    """
+    from .profiling.energy_predictor import EnergyPredictor, prepare_training_data_from_database
+
+    db = None
+    try:
+        db = ProfileDatabase()
+        db.connect()
+
+        # Prepare training data
+        training_data = prepare_training_data_from_database(db)
+
+        if len(training_data) < 5:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Not enough training data. Need at least 5 completed profiling runs, found {len(training_data)}."
+            )
+
+        # Train model
+        predictor = EnergyPredictor()
+        metrics = predictor.train(training_data)
+        predictor.save_model()
+
+        return {
+            "success": True,
+            "metrics": metrics,
+            "message": f"Energy predictor trained successfully on {metrics['n_samples']} samples with R²={metrics['r2']:.4f}"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to train energy predictor: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to train energy predictor: {str(e)}"
+        )
+    finally:
+        if db:
+            db.close()
+
+
 @app.get("/api/profiling/long-context-analysis")
 def get_long_context_analysis(
     run_id: Optional[str] = None,
