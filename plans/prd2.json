@@ -645,7 +645,7 @@
       "title": "Add profiling comparison feature",
       "description": "No way to compare two profiling runs side-by-side. Users need to manually compare metrics.",
       "priority": "low",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read frontend components. No comparison view. Database has data but no comparison endpoint.",
         "test": "Cannot visually compare two different profiling runs.",
