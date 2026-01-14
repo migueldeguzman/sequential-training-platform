@@ -528,7 +528,7 @@
       "title": "Fix ProfilingContext initial state race condition",
       "description": "ProfilingContext may miss early WebSocket events if component renders before WebSocket connects.",
       "priority": "low",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read src/components/profiling/ProfilingContext.tsx. WebSocket connects in useEffect. Events before connection complete are lost.",
         "test": "Start profiling immediately after page load. May miss first few events.",

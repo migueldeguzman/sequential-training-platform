@@ -205,8 +205,18 @@ export function ProfilingProvider({ children }: { children: React.ReactNode }) {
       // Connect WebSocket first
       wsConnect();
 
-      // Wait a moment for WebSocket to connect
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Wait for WebSocket to actually connect (poll connection state)
+      // This ensures we don't miss early events
+      const maxWaitTime = 5000; // 5 seconds max
+      const startTime = Date.now();
+      while (connectionState !== 'connected' && (Date.now() - startTime) < maxWaitTime) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
+      // Check if connection succeeded
+      if (connectionState !== 'connected') {
+        throw new Error('WebSocket connection timeout - failed to connect in 5 seconds');
+      }
 
       // Update state to running
       setState((prev) => ({
@@ -243,7 +253,7 @@ export function ProfilingProvider({ children }: { children: React.ReactNode }) {
         wsError: error instanceof Error ? error : new Error('Failed to start profiling'),
       }));
     }
-  }, [wsConnect]);
+  }, [wsConnect, connectionState]);
 
   // Stop profiling action
   const stopProfiling = useCallback(async () => {
