@@ -1777,6 +1777,7 @@ async def profiled_generate(request: ProfiledGenerateRequest):
 
     Returns the run_id for querying profiling data.
     """
+    import time
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
     from profiling.power_monitor import PowerMonitor
@@ -2154,20 +2155,8 @@ async def profiled_generate(request: ProfiledGenerateRequest):
             with session.section("detokenization", phase="post_inference"):
                 session.response = response
 
-        # Cleanup
-        if deep_profiler:
-            try:
-                deep_profiler.unpatch()
-            except Exception as e:
-                logger.warning(f"Failed to unpatch DeepProfiler: {e}")
-
-        if layer_profiler:
-            try:
-                layer_profiler.detach()
-            except Exception as e:
-                logger.warning(f"Failed to detach LayerProfiler: {e}")
-
         # Data is automatically saved to database via profiler.run context manager
+        # Cleanup is handled automatically by the context manager's finally block
         result = {
             "runId": session.run_id,
             "response": response,
@@ -2183,6 +2172,21 @@ async def profiled_generate(request: ProfiledGenerateRequest):
 
     except Exception as e:
         logger.error(f"Profiled generation failed: {str(e)}")
+
+        # Notify frontend of profiling error via WebSocket
+        try:
+            error_message = {
+                "type": ProfilingMessageType.ERROR,
+                "timestamp": time.time() * 1000,
+                "data": {
+                    "error": str(e),
+                    "message": "Profiling failed"
+                }
+            }
+            asyncio.run_coroutine_threadsafe(profiling_manager.broadcast(error_message), main_loop)
+        except Exception as ws_error:
+            logger.error(f"Failed to send error notification via WebSocket: {ws_error}")
+
         raise HTTPException(status_code=500, detail=f"Profiled generation failed: {str(e)}")
 
 

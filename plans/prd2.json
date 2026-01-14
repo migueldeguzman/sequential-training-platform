@@ -125,7 +125,7 @@
       "title": "Fix profiling cleanup on error",
       "description": "If profiling fails mid-execution, PowerMonitor and layer hooks may not be cleaned up properly, leaving the system in inconsistent state.",
       "priority": "medium",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read backend/main.py profiled_generate endpoint. Error handling uses try/except but cleanup may not happen in all paths. power_monitor.stop() may not be called if exception occurs.",
         "test": "Force an error during profiling (e.g., invalid model). Check if PowerMonitor subprocess is still running (ps aux | grep powermetrics).",
