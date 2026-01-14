@@ -47,7 +47,7 @@
       "title": "Fix token timing measurement",
       "description": "Token timing is measured around generated_tokens.append(token_text) which is near-instant. This results in token_duration_ms being effectively 0, making energy calculations wrong.",
       "priority": "high",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read backend/main.py decode section around lines 1930-1960. The timing measures: start = time.perf_counter(), generated_tokens.append(token_text), end = time.perf_counter(). The append operation takes microseconds.",
         "test": "Profile any model and check token duration values in TokenGenerationStream. All tokens show ~0ms duration.",

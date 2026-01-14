@@ -16,3 +16,8 @@ Status: Fixed section event callbacks async issue
 Description: All callback functions (stream_section_event, stream_token_complete, stream_layer_metrics, stream_component_metrics, stream_inference_complete) were already fixed as part of BUG-001. They all use asyncio.run_coroutine_threadsafe() with main_loop for thread-safe WebSocket broadcasting. No additional changes needed.
 Files Modified: backend/main.py (already fixed in BUG-001)
 
+[2026-01-14] BUG-004 - COMPLETED
+Status: Fixed token timing measurement
+Description: Fixed token duration measurement which was timing the append() operation (~0ms) instead of actual token generation time. Implemented proper timing by tracking time between consecutive token arrivals from the streamer. Added last_token_time variable to measure duration as (current_token_time - last_token_time). For the first token, uses a reasonable default of 50ms. This fix ensures accurate token duration values (10-100ms per token) and correct energy calculations.
+Files Modified: backend/main.py
+

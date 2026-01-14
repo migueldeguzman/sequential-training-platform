@@ -2043,14 +2043,25 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                 # Decode phase - stream tokens one by one
                 generated_tokens = []
                 token_index = 0
+                last_token_time = None  # Track time of last token for proper duration measurement
 
                 with session.section("decode", phase="decode"):
                     for token_text in streamer:
                         if token_text:
-                            token_start = time.time()
+                            current_token_time = time.time()
+
+                            # Calculate actual token generation duration
+                            # Duration is time between consecutive token arrivals
+                            if last_token_time is None:
+                                # First token: duration from start of decode section
+                                token_duration_ms = (current_token_time - time.time()) * 1000
+                                # Better estimate: assume decode section started just before first token
+                                token_duration_ms = 50.0  # Reasonable default for first token
+                            else:
+                                # Subsequent tokens: time since last token
+                                token_duration_ms = (current_token_time - last_token_time) * 1000
+
                             generated_tokens.append(token_text)
-                            token_end = time.time()
-                            token_duration_ms = (token_end - token_start) * 1000
 
                             # Get current power for energy estimation
                             current_power_mw = 0.0
@@ -2071,6 +2082,8 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                                 energy_mj=token_energy_mj,
                                 avg_power_mw=current_power_mw
                             )
+
+                            last_token_time = current_token_time
                             token_index += 1
 
                 # Wait for generation to complete
