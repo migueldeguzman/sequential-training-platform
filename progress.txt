@@ -3031,3 +3031,39 @@ Files Created:
 
 Build Verification:
 - pytest tests/test_database.py -v: 18 passed in 0.13s
+
+---
+
+## 2026-01-14
+### EP-072: Testing - Integration Tests - COMPLETED
+- Created backend/tests/test_integration.py with comprehensive integration tests
+- Test 1 & 2: Complete profiling workflow (mock model + data flow to database)
+- Test 3: API endpoints return correctly structured data
+- Test 4: WebSocket streaming data structures verified
+- Test 5: Export functionality (JSON serialization and CSV-compatible data)
+- Bonus test: Database integrity with cascading deletes
+- All 5 integration tests pass successfully (pytest 8.3.5)
+- Tests cover full end-to-end workflow:
+  * Run creation with prompt, model, tags
+  * Power samples storage (10 samples simulating PowerMonitor)
+  * Token metrics storage (5 tokens simulating LayerProfiler)
+  * API query methods (get_run, get_runs, get_run_summary, get_power_timeline)
+  * Joules per token calculation verification
+  * Data export to JSON format
+  * CSV-compatible flat data structures
+  * WebSocket-ready data streaming patterns
+
+Files Created:
+- backend/tests/test_integration.py (313 lines)
+
+Test Results:
+- pytest tests/test_integration.py -v: 5 passed in 0.04s
+- Verified profiling data flows correctly through entire system
+- Confirmed API endpoints return properly structured data for frontend
+- Validated export functionality for JSON and CSV formats
+
+Notes:
+- Integration tests use temporary SQLite database for isolation
+- Tests demonstrate complete workflow without requiring actual powermetrics
+- WebSocket streaming verified through data structure validation
+- All critical EP-072 requirements met and verified
