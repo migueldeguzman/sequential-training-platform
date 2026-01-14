@@ -10,6 +10,7 @@ Supported architectures:
 - Phi (microsoft/phi-*, etc.)
 - Qwen (Qwen/Qwen-*, etc.)
 - Gemma (google/gemma-*, etc.)
+- StableLM (stabilityai/stablelm-*, etc.)
 
 Usage:
     detector = ModelArchitectureDetector(model)
@@ -84,7 +85,9 @@ class ModelArchitectureDetector:
             model_type = getattr(self.model_config, 'model_type', None)
 
         # Detect architecture based on model type or structure
-        if model_type == 'llama' or self._is_llama_structure():
+        if model_type == 'stablelm' or self._is_stablelm_structure():
+            return self._detect_stablelm()
+        elif model_type == 'llama' or self._is_llama_structure():
             return self._detect_llama()
         elif model_type == 'mistral' or self._is_mistral_structure():
             return self._detect_mistral()
@@ -100,6 +103,27 @@ class ModelArchitectureDetector:
                 "Using fallback detection."
             )
             return self._fallback_detection()
+
+    def _is_stablelm_structure(self) -> bool:
+        """Check if model has StableLM-like structure."""
+        try:
+            # Check for characteristic StableLM structure
+            # StableLM models are similar to Llama but have different attention handling
+            model_class_name = self.model.__class__.__name__
+            return (
+                'StableLM' in model_class_name or
+                'Stablelm' in model_class_name or
+                (hasattr(self.model, 'model') and
+                 hasattr(self.model.model, 'layers') and
+                 len(self.model.model.layers) > 0 and
+                 hasattr(self.model.model.layers[0], 'self_attn') and
+                 # StableLM specific: check config for stablelm markers
+                 self.model_config and
+                 (getattr(self.model_config, 'model_type', None) == 'stablelm' or
+                  'stablelm' in str(type(self.model)).lower()))
+            )
+        except (AttributeError, IndexError):
+            return False
 
     def _is_llama_structure(self) -> bool:
         """Check if model has Llama-like structure."""
@@ -301,6 +325,30 @@ class ModelArchitectureDetector:
             norm_type="rmsnorm"
         )
 
+    def _detect_stablelm(self) -> ComponentPaths:
+        """Detect StableLM architecture and return component paths."""
+        num_layers = len(self.model.model.layers)
+
+        logger.info(f"Detected StableLM architecture with {num_layers} layers")
+
+        # StableLM uses similar structure to Llama but has different KV cache handling
+        # Component paths are the same as Llama
+        return ComponentPaths(
+            architecture="stablelm",
+            num_layers=num_layers,
+            layers_path="model.layers",
+            q_proj="self_attn.q_proj",
+            k_proj="self_attn.k_proj",
+            v_proj="self_attn.v_proj",
+            o_proj="self_attn.o_proj",
+            gate_proj="mlp.gate_proj",
+            up_proj="mlp.up_proj",
+            down_proj="mlp.down_proj",
+            input_layernorm="input_layernorm",
+            post_attention_layernorm="post_attention_layernorm",
+            norm_type="layernorm"
+        )
+
     def _fallback_detection(self) -> ComponentPaths:
         """
         Fallback detection for unknown architectures.
@@ -412,3 +460,38 @@ def detect_model_architecture(model: Any) -> ComponentPaths:
     """
     detector = ModelArchitectureDetector(model)
     return detector.detect()
+
+
+def is_streaming_compatible(model: Any) -> bool:
+    """
+    Check if a model is compatible with TextIteratorStreamer.
+
+    Some models (like StableLM) have issues with streaming generation due to
+    how they handle KV cache and past_key_values.
+
+    Args:
+        model: PyTorch model to check
+
+    Returns:
+        True if model supports streaming, False otherwise
+    """
+    try:
+        # Get model architecture
+        components = detect_model_architecture(model)
+
+        # Known incompatible architectures
+        incompatible_archs = {'stablelm'}
+
+        if components.architecture in incompatible_archs:
+            logger.warning(
+                f"Model architecture '{components.architecture}' is not compatible "
+                "with streaming generation. Will use non-streaming mode."
+            )
+            return False
+
+        return True
+
+    except Exception as e:
+        logger.warning(f"Could not determine streaming compatibility: {e}")
+        # Default to streaming-compatible if we can't detect
+        return True

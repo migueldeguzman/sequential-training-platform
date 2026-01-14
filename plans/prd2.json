@@ -1,0 +1,657 @@
+{
+  "name": "ML Dashboard Bug Fixes and Improvements",
+  "description": "Comprehensive bug fixes for the Energy Profiler and ML Dashboard components",
+  "version": "2.0.0",
+  "features": [
+    {
+      "id": "BUG-001",
+      "title": "Fix async event loop error in power sample callback",
+      "description": "The power sample callback is called from PowerMonitor's background thread but uses asyncio.create_task() which requires an event loop in the current thread. This causes 'no running event loop' errors.",
+      "priority": "critical",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/main.py lines 1860-1880 to find stream_power_sample callback. The callback is registered with profiler.power_monitor._power_sample_callback but executes in PowerMonitor's _sampling_loop thread. asyncio.create_task(manager.broadcast(...)) fails because no event loop runs in that thread.",
+        "test": "Run profiling and check server logs for 'Failed to stream power sample: no running event loop' errors. These appear continuously during profiling.",
+        "fix": "1. Capture the main event loop before starting profiling: main_loop = asyncio.get_running_loop(). 2. In stream_power_sample, use asyncio.run_coroutine_threadsafe(manager.broadcast(...), main_loop) instead of asyncio.create_task(). 3. Store main_loop reference accessible to callback.",
+        "verify": "Run profiling again. No 'no running event loop' errors should appear. Power samples should stream to frontend WebSocket."
+      }
+    },
+    {
+      "id": "BUG-002",
+      "title": "Fix StableLM model compatibility with TextIteratorStreamer",
+      "description": "StableLM model crashes with 'NoneType' object has no attribute 'shape' when using TextIteratorStreamer. The error occurs at past_key_values[0][0].shape[2] in modeling_stablelm_epoch.py.",
+      "priority": "critical",
+      "passes": true,
+      "debug_steps": {
+        "review": "The error occurs because StableLM's attention module accesses past_key_values before the model generates them. TextIteratorStreamer requires use_cache=True but StableLM's cache handling differs from standard models.",
+        "test": "Try to profile with StableLM model (step_3_SLSEdefense_version7-zephyr). Server will crash with AttributeError.",
+        "fix": "1. In backend/main.py profiled_generate endpoint, detect if model is StableLM type before streaming. 2. For StableLM models, either: a) Use non-streaming generation with post-hoc token extraction, or b) Set use_cache=False and handle KV cache differently. 3. Add model compatibility check in model_detector.py for StableLM architecture.",
+        "verify": "Profile with StableLM model. Should complete without crashing. Tokens may not stream real-time but profiling should complete."
+      }
+    },
+    {
+      "id": "BUG-003",
+      "title": "Fix section event callbacks async issue",
+      "description": "All callbacks registered in profiled_generate endpoint (on_section_start, on_section_end, on_token_start, on_token_complete) have the same async event loop issue as the power sample callback.",
+      "priority": "critical",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/main.py lines 1874-1975. All callback functions use asyncio.create_task() but they may be called from different threads during profiling.",
+        "test": "Check server logs during profiling for any 'no running event loop' errors from section callbacks.",
+        "fix": "Apply the same fix as BUG-001: capture main event loop before profiling starts, use asyncio.run_coroutine_threadsafe() in all callbacks. Create a helper function to safely broadcast from any thread.",
+        "verify": "All WebSocket events (section_start, section_end, token_complete) should stream to frontend without errors."
+      }
+    },
+    {
+      "id": "BUG-004",
+      "title": "Fix token timing measurement",
+      "description": "Token timing is measured around generated_tokens.append(token_text) which is near-instant. This results in token_duration_ms being effectively 0, making energy calculations wrong.",
+      "priority": "high",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/main.py decode section around lines 1930-1960. The timing measures: start = time.perf_counter(), generated_tokens.append(token_text), end = time.perf_counter(). The append operation takes microseconds.",
+        "test": "Profile any model and check token duration values in TokenGenerationStream. All tokens show ~0ms duration.",
+        "fix": "1. Track time between consecutive streamer iterations instead. 2. Store last_token_time, calculate duration as current_time - last_token_time. 3. For first token, duration is time from streamer iteration start. Energy = avg_power * duration / 1000.",
+        "verify": "Token durations should show realistic values (10-100ms per token depending on model). Energy per token should be non-zero."
+      }
+    },
+    {
+      "id": "BUG-005",
+      "title": "Fix token field name mismatch between backend and frontend",
+      "description": "Backend sends 'token_index' but frontend TokenCompleteMessage expects 'token_position'. This causes token_position to be undefined in frontend.",
+      "priority": "high",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/main.py emit_token_complete_event call around line 1950. It sends token_index. Read src/components/profiling/ProfilingContext.tsx handleMessage function and TokenCompleteMessage type. Frontend maps message.token_position.",
+        "test": "Profile and hover over tokens in TokenGenerationStream. Token position shows 'undefined' or wrong value.",
+        "fix": "Either: 1. Update backend to send 'token_position' instead of 'token_index', OR 2. Update frontend TokenCompleteMessage interface to expect 'token_index' and map it to token_position. Recommend option 1 for consistency.",
+        "verify": "Hover over generated tokens. Token position should show correct sequential numbers (1, 2, 3...)."
+      }
+    },
+    {
+      "id": "BUG-006",
+      "title": "Fix WebSocket URL hardcoding in frontend",
+      "description": "Multiple frontend files hardcode localhost:8000 for API/WebSocket URLs instead of using environment variables or dynamic detection.",
+      "priority": "medium",
+      "passes": false,
+      "debug_steps": {
+        "review": "Search frontend for 'localhost:8000'. Found in: src/components/profiling/ProfilingControls.tsx (fetch models, start profiling), src/lib/profilingWebsocket.ts (WebSocket connection), src/lib/api.ts.",
+        "test": "Try to run frontend on different port or connect to remote backend. API calls and WebSocket connections fail.",
+        "fix": "1. Create environment variable NEXT_PUBLIC_API_URL in .env.local. 2. Create src/lib/config.ts that exports API_BASE_URL. 3. Replace all hardcoded localhost:8000 with the config value. 4. For WebSocket, derive ws:// URL from http:// API URL.",
+        "verify": "Set NEXT_PUBLIC_API_URL to a different value. Frontend should connect to that URL for all API calls."
+      }
+    },
+    {
+      "id": "BUG-007",
+      "title": "Add StableLM architecture detection in model_detector.py",
+      "description": "model_detector.py doesn't detect StableLM architecture, causing it to be misidentified as Llama-like and using wrong component paths for profiling.",
+      "priority": "high",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/profiling/model_detector.py. Check detect_architecture() function. No pattern for StableLM models. They get detected as 'llama' because of similar structure but have different attention module names.",
+        "test": "Load StableLM model and call detect_architecture(). Returns 'llama' instead of 'stablelm'.",
+        "fix": "1. Add 'stablelm' to ModelArchitecture enum. 2. Add detection pattern: check for 'StableLmForCausalLM' or 'StableLM' in model class name or config. 3. Add StableLM component paths: attention modules use 'self_attn' but may have different internal structure.",
+        "verify": "detect_architecture() for StableLM model should return 'stablelm'. Layer profiler should use correct component paths."
+      }
+    },
+    {
+      "id": "BUG-008",
+      "title": "Fix energy calculation using near-zero duration",
+      "description": "Token energy is calculated as current_power_mw * token_duration_ms / 1000.0 but token_duration_ms is near-zero due to BUG-004, resulting in 0 energy per token.",
+      "priority": "high",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/main.py around line 1945. token_energy_mj = current_power_mw * token_duration_ms / 1000.0. With duration ~0, energy ~0.",
+        "test": "Profile and check token energy values. All show 0.00 mJ or very small values.",
+        "fix": "This is fixed by BUG-004. Once token timing is correct, energy calculation will be correct. Ensure power_mw is in milliwatts and duration_ms is in milliseconds. Energy (mJ) = Power (mW) * Time (ms) / 1000.",
+        "verify": "Token energy values should be realistic (0.1-10 mJ per token depending on model and hardware)."
+      }
+    },
+    {
+      "id": "BUG-009",
+      "title": "Add model streaming compatibility check",
+      "description": "Not all models support TextIteratorStreamer. Need to check model compatibility before using streaming generation.",
+      "priority": "high",
+      "passes": false,
+      "debug_steps": {
+        "review": "TextIteratorStreamer works with most HuggingFace models but some (like StableLM with certain configs) have issues. No compatibility check exists.",
+        "test": "Profile with various models. Some crash or behave unexpectedly with TextIteratorStreamer.",
+        "fix": "1. Add function check_streaming_compatibility(model, tokenizer) in model_detector.py. 2. Check: a) model.config.is_encoder_decoder (streaming may not work), b) known incompatible architectures, c) tokenizer has proper streaming support. 3. In profiled_generate, check compatibility and fall back to non-streaming if needed.",
+        "verify": "Incompatible models should use non-streaming path and complete profiling successfully."
+      }
+    },
+    {
+      "id": "BUG-010",
+      "title": "Fix profiling cleanup on error",
+      "description": "If profiling fails mid-execution, PowerMonitor and layer hooks may not be cleaned up properly, leaving the system in inconsistent state.",
+      "priority": "medium",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/main.py profiled_generate endpoint. Error handling uses try/except but cleanup may not happen in all paths. power_monitor.stop() may not be called if exception occurs.",
+        "test": "Force an error during profiling (e.g., invalid model). Check if PowerMonitor subprocess is still running (ps aux | grep powermetrics).",
+        "fix": "1. Wrap profiling in try/finally block. 2. In finally: always stop power_monitor if running, unpatch deep_profiler if patched, send profiling_error WebSocket event. 3. Add cleanup helper function for consistent teardown.",
+        "verify": "Force profiling error. PowerMonitor process should be terminated. No orphan subprocesses."
+      }
+    },
+    {
+      "id": "BUG-011",
+      "title": "Fix WebSocket reconnection race condition",
+      "description": "profilingWebsocket.ts reconnection logic can cause duplicate connections if reconnection attempt starts while previous connection is still closing.",
+      "priority": "low",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read src/lib/profilingWebsocket.ts reconnection logic. Multiple rapid disconnects can trigger multiple reconnection attempts.",
+        "test": "Rapidly toggle profiling on/off while WebSocket is connecting. May see duplicate event handlers or missed events.",
+        "fix": "1. Add connection state flag (connecting, connected, disconnecting, disconnected). 2. Don't start reconnection if already connecting. 3. Cancel pending reconnection timer on manual disconnect. 4. Use single WebSocket instance pattern.",
+        "verify": "Rapid connect/disconnect cycles should result in exactly one active connection."
+      }
+    },
+    {
+      "id": "BUG-012",
+      "title": "Add error boundary for profiling components",
+      "description": "No React error boundary wraps profiling components. JavaScript errors crash the entire dashboard instead of showing graceful error UI.",
+      "priority": "low",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read src/components/profiling/EnergyProfilerPanel.tsx. No ErrorBoundary component wraps the profiling views.",
+        "test": "Cause a JavaScript error in profiling component (e.g., access undefined property). Entire page crashes.",
+        "fix": "1. Create src/components/profiling/ProfilingErrorBoundary.tsx. 2. Wrap RealTimeView and other profiling components with error boundary. 3. Show friendly error message with retry button on error.",
+        "verify": "JavaScript errors in profiling components should show error boundary UI, not crash entire page."
+      }
+    },
+    {
+      "id": "BUG-013",
+      "title": "Fix power sample timestamp using wrong base",
+      "description": "Power samples use absolute Unix timestamp but frontend expects relative timestamp from profiling start for chart display.",
+      "priority": "medium",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/profiling/power_monitor.py PowerSample class. timestamp is Unix timestamp, relative_time_ms is from start. Check what frontend receives and expects.",
+        "test": "Check power chart X-axis. May show huge timestamps instead of time since profiling start.",
+        "fix": "1. WebSocket power_sample event should send relative_time_ms for chart timestamp. 2. Update stream_power_sample callback to use sample.relative_time_ms. 3. Frontend PowerTimeSeriesChart expects timestamp in milliseconds from start.",
+        "verify": "Power chart X-axis should show time from 0 to profiling duration in seconds."
+      }
+    },
+    {
+      "id": "BUG-014",
+      "title": "Fix PowerTimeSeriesChart data format mismatch",
+      "description": "PowerTimeSeriesChart expects samples with 'timestamp' field but power samples may have different field names between WebSocket and internal storage.",
+      "priority": "medium",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read src/components/profiling/charts/PowerTimeSeriesChart.tsx. Check PowerSample type and what fields it expects. Compare to WebSocket message format.",
+        "test": "Start profiling and check if power chart displays data. May show empty or flat line.",
+        "fix": "1. Ensure WebSocket power_sample message format matches frontend PowerSample type. 2. Fields needed: timestamp (relative ms), cpu_power_mw, gpu_power_mw, ane_power_mw, dram_power_mw, total_power_mw, phase.",
+        "verify": "Power chart should show real-time updating line chart with CPU, GPU, ANE, DRAM traces."
+      }
+    },
+    {
+      "id": "BUG-015",
+      "title": "Fix ProfilingContext token mapping",
+      "description": "ProfilingContext handleMessage maps TokenCompleteMessage fields but some field names don't match backend output, causing data loss.",
+      "priority": "medium",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read src/components/profiling/ProfilingContext.tsx handleMessage for 'token_complete' case. Check field mapping: id, token_text, token_position, duration_ms, energy_mj, power_snapshot_mw, phase, start_time, end_time.",
+        "test": "Profile and check TokenMetrics in React DevTools. Some fields may be undefined.",
+        "fix": "1. Align field names: backend uses token_index -> frontend token_position. 2. Backend uses avg_power_mw -> frontend power_snapshot_mw. 3. Backend uses start_time_ms -> frontend start_time. 4. Update either side for consistency.",
+        "verify": "All TokenMetrics fields should have valid values. Hover tooltip should show all data."
+      }
+    },
+    {
+      "id": "BUG-016",
+      "title": "Add Gemma 3 architecture detection",
+      "description": "Gemma 3 models may not be properly detected. They're currently detected as 'llama' but may have different internal structure.",
+      "priority": "medium",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/profiling/model_detector.py. Check if Gemma detection exists. Gemma 3 uses 'Gemma2ForCausalLM' or 'GemmaForCausalLM' class names.",
+        "test": "Load Gemma 3 model and check detected architecture. May show 'llama' instead of 'gemma'.",
+        "fix": "1. Add 'gemma' to ModelArchitecture enum if not present. 2. Add detection: check for 'Gemma' in model class name or config.model_type == 'gemma'. 3. Add Gemma-specific component paths if different from Llama.",
+        "verify": "detect_architecture() for Gemma model should return 'gemma'."
+      }
+    },
+    {
+      "id": "BUG-017",
+      "title": "Fix layer profiler hooks for different architectures",
+      "description": "LayerProfiler hook registration assumes Llama-like layer structure. Other architectures (StableLM, Gemma) may have different module paths causing hooks to not attach.",
+      "priority": "high",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/profiling/layer_profiler.py _register_hooks method. Check module path patterns used to find attention, MLP, LayerNorm components.",
+        "test": "Profile non-Llama model. Check if layer metrics are captured. May show 0 component types.",
+        "fix": "1. Use model_detector to determine architecture. 2. Get architecture-specific component paths. 3. In _register_hooks, try multiple path patterns or use detected architecture to select correct paths. 4. Log warning if expected components not found.",
+        "verify": "Profiling any supported architecture should capture layer/component metrics."
+      }
+    },
+    {
+      "id": "BUG-018",
+      "title": "Fix deep profiler attention metrics extraction",
+      "description": "DeepAttentionProfiler may fail to extract attention weights from some model architectures where attention output format differs.",
+      "priority": "medium",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/profiling/deep_profiler.py _create_instrumented_forward. Assumes result tuple format (output, attention_weights, ...). Some models return different formats.",
+        "test": "Enable deep profiling. Check if attention metrics (entropy, sparsity) are populated. May be zeros.",
+        "fix": "1. Check model architecture before assuming output format. 2. Try multiple extraction patterns. 3. Return gracefully if attention weights not available for this architecture.",
+        "verify": "Deep profiling should show attention metrics for supported architectures, gracefully skip for others."
+      }
+    },
+    {
+      "id": "BUG-019",
+      "title": "Add prefill vs decode phase energy tracking",
+      "description": "Energy should be tracked separately for prefill (processing input tokens) and decode (generating output tokens) phases for detailed analysis.",
+      "priority": "medium",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/main.py profiled_generate. Check if prefill and decode phases are tracked separately. Power monitor has set_phase() method.",
+        "test": "Profile and check run summary. prefill_energy_mj and decode_energy_mj may be 0 or not set.",
+        "fix": "1. Before prefill section, call power_monitor.set_phase('prefill'). 2. Before decode section, call power_monitor.set_phase('decode'). 3. After profiling, calculate prefill_energy and decode_energy from phase-tagged samples. 4. Store in database.",
+        "verify": "Run summary should show accurate prefill_energy_mj and decode_energy_mj values."
+      }
+    },
+    {
+      "id": "BUG-020",
+      "title": "Fix LiveLayerHeatmap not receiving data",
+      "description": "LiveLayerHeatmap component shows 'Waiting for token generation' even when tokens are being generated, because layer metrics aren't being sent via WebSocket.",
+      "priority": "high",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read src/components/profiling/charts/LiveLayerHeatmap.tsx. It expects latestToken prop with layer_metrics array. Check ProfilingContext tokens - do they have layer_metrics?",
+        "test": "Profile and check Layer Activity Heatmap. Shows spinner even when tokens are generated.",
+        "fix": "1. Backend token_complete event should include layer_metrics array. 2. emit_token_complete_event needs to collect and send per-layer timings. 3. LayerProfiler.get_layer_timings() should return data for current token. 4. Frontend TokenMetrics type needs layer_metrics field.",
+        "verify": "Layer heatmap should update with each token, showing layer activity."
+      }
+    },
+    {
+      "id": "BUG-021",
+      "title": "Fix CurrentOperationIndicator not updating",
+      "description": "CurrentOperationIndicator component should show current phase and section but may not receive WebSocket updates properly.",
+      "priority": "low",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read src/components/profiling/CurrentOperationIndicator.tsx. Check what context values it uses. Read ProfilingContext section_start/section_end handlers.",
+        "test": "Profile and check operation indicator at bottom. May stay on 'Idle' or not update phases.",
+        "fix": "1. Ensure section_start and section_end WebSocket events are being sent from backend. 2. ProfilingContext should update currentPhase and currentSection on these events. 3. CurrentOperationIndicator should read these from context.",
+        "verify": "Operation indicator should show phase transitions: idle -> pre_inference -> prefill -> decode -> post_inference."
+      }
+    },
+    {
+      "id": "BUG-022",
+      "title": "Add model loading progress indication",
+      "description": "Loading large models takes time but no progress indication is shown. User may think the app is frozen.",
+      "priority": "low",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/main.py load_model_if_needed. Model loading can take 10-60 seconds for large models. No progress events sent.",
+        "test": "Profile with a model not yet loaded. UI shows no indication during loading time.",
+        "fix": "1. Add 'model_loading' WebSocket event type. 2. Send progress updates during model loading. 3. Frontend should show loading state with model name and progress. 4. Handle loading errors with user-friendly message.",
+        "verify": "Model loading shows progress indication. User knows loading is happening."
+      }
+    },
+    {
+      "id": "BUG-023",
+      "title": "Fix database path resolution",
+      "description": "ProfileDatabase uses relative path 'backend/profiling.db' which may fail depending on working directory when server starts.",
+      "priority": "low",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/profiling/database.py __init__. Default path is 'backend/profiling.db'. Read backend/main.py where database is initialized.",
+        "test": "Start server from different directory. Database may fail to create or use wrong location.",
+        "fix": "1. Use absolute path based on project root or config. 2. Add DATABASE_PATH environment variable. 3. Default to absolute path relative to backend directory. 4. Log database location on startup.",
+        "verify": "Database file created in consistent location regardless of working directory."
+      }
+    },
+    {
+      "id": "BUG-024",
+      "title": "Add input token count tracking",
+      "description": "Profiling should track input token count separately from output token count for accurate per-token energy analysis.",
+      "priority": "medium",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/main.py profiled_generate. Check if input_token_count is calculated and stored. Look for tokenizer input length tracking.",
+        "test": "Check profiling run in database. input_token_count may be null or 0.",
+        "fix": "1. After tokenization, count input tokens: input_token_count = len(inputs['input_ids'][0]). 2. Pass to session and store in database. 3. Calculate energy_per_input_token. 4. Update database schema if needed.",
+        "verify": "Profiling runs should have accurate input_token_count and energy_per_input_token_mj."
+      }
+    },
+    {
+      "id": "BUG-025",
+      "title": "Fix model dropdown not showing all models",
+      "description": "ProfilingControls model dropdown fetches from /api/models but may not show all trained models in the models directory.",
+      "priority": "medium",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/main.py /api/models endpoint. Check how models are discovered. Read ProfilingControls useEffect for fetching models.",
+        "test": "Add a new model to models directory. May not appear in dropdown until server restart.",
+        "fix": "1. Ensure /api/models scans models directory each time (or on refresh). 2. Add refresh button to ProfilingControls. 3. Handle models in subdirectories. 4. Filter for valid model directories (has config.json).",
+        "verify": "All valid model directories should appear in dropdown. New models appear after refresh."
+      }
+    },
+    {
+      "id": "BUG-026",
+      "title": "Add profiling history view",
+      "description": "No UI to view past profiling runs. Database stores runs but no way to access them from frontend.",
+      "priority": "low",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/main.py - should have /api/profiling/runs endpoint. Read frontend - no component for viewing history.",
+        "test": "After multiple profiling runs, no way to view previous results in UI.",
+        "fix": "1. Ensure backend has GET /api/profiling/runs endpoint. 2. Create ProfilingHistory.tsx component. 3. Add tab or view to switch between real-time and history. 4. Show list of runs with key metrics, allow drill-down.",
+        "verify": "Users can view list of past profiling runs and see detailed metrics for each."
+      }
+    },
+    {
+      "id": "BUG-027",
+      "title": "Fix plist buffer parsing edge cases",
+      "description": "PowerMonitor plist parsing may fail on edge cases where plist output is split across buffer boundaries or contains unexpected XML.",
+      "priority": "medium",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/profiling/power_monitor.py _sampling_loop. Plist buffering uses string contains checks which may miss split tags.",
+        "test": "Run profiling for extended time. May see occasional 'Failed to parse plist' warnings.",
+        "fix": "1. Use more robust XML boundary detection. 2. Handle case where <?xml is on separate line from <plist>. 3. Add timeout for incomplete plist (don't buffer forever). 4. Log and skip malformed samples gracefully.",
+        "verify": "Extended profiling runs should have consistent power sample collection without parse errors."
+      }
+    },
+    {
+      "id": "BUG-028",
+      "title": "Add GPU power tracking for NVIDIA GPUs",
+      "description": "PowerMonitor only tracks Apple Silicon power via powermetrics. No support for NVIDIA GPU power tracking via nvidia-smi.",
+      "priority": "low",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/profiling/power_monitor.py. Uses macOS powermetrics command. No nvidia-smi integration.",
+        "test": "Run on system with NVIDIA GPU. GPU power shows as 0.",
+        "fix": "1. Add platform detection. 2. Create NvidiaPowerMonitor class using nvidia-smi --query-gpu=power.draw --format=csv,noheader,nounits -l 1. 3. Create factory function to return appropriate monitor. 4. Abstract common interface for power samples.",
+        "verify": "On NVIDIA systems, GPU power should be tracked via nvidia-smi."
+      }
+    },
+    {
+      "id": "BUG-029",
+      "title": "Fix sampling interval not being respected",
+      "description": "PowerMonitor sample_interval_ms is passed to powermetrics but actual sample rate may vary due to system load or powermetrics behavior.",
+      "priority": "low",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/profiling/power_monitor.py start(). Passes -i sample_interval_ms to powermetrics. Check if samples arrive at expected rate.",
+        "test": "Set sample_interval_ms to 50. Check if 20 samples/second are collected.",
+        "fix": "1. Log actual sample rate periodically. 2. Add warning if sample rate deviates significantly. 3. Consider interpolating samples if needed for consistent energy calculation. 4. Document minimum practical interval (powermetrics has limits).",
+        "verify": "Sample rate should be close to requested rate. Warnings logged if significantly off."
+      }
+    },
+    {
+      "id": "BUG-030",
+      "title": "Add batch size support in profiling",
+      "description": "Profiling currently assumes batch_size=1. Should support profiling with different batch sizes for throughput analysis.",
+      "priority": "low",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/main.py ProfiledGenerateRequest. Has max_length but no batch_size field. Generation code uses single input.",
+        "test": "Cannot profile with batch_size > 1.",
+        "fix": "1. Add batch_size field to ProfiledGenerateRequest. 2. Duplicate input prompt for batch processing. 3. Track per-batch metrics. 4. Calculate throughput as tokens/second for batch. 5. Store batch_size in database.",
+        "verify": "Can profile with batch_size > 1. Throughput metrics scale appropriately."
+      }
+    },
+    {
+      "id": "BUG-031",
+      "title": "Fix temperature and top_p not being applied",
+      "description": "ProfilingControls sends temperature and top_p but they may not be applied to generation due to field name mismatch or missing handling.",
+      "priority": "medium",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read src/components/profiling/ProfilingControls.tsx - sends temperature, top_p. Read backend/main.py ProfiledGenerateRequest and generation code.",
+        "test": "Set temperature to 0 and generate. Output should be deterministic but may not be.",
+        "fix": "1. Ensure ProfiledGenerateRequest has temperature and top_p fields. 2. Pass these to model.generate() call. 3. For temperature=0, use do_sample=False or temperature=0.0001.",
+        "verify": "Different temperature values produce different output distributions. Temperature=0 is deterministic."
+      }
+    },
+    {
+      "id": "BUG-032",
+      "title": "Add KV cache memory tracking",
+      "description": "Database schema has kv_cache_size_mb but profiling doesn't measure and store KV cache memory usage.",
+      "priority": "medium",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/profiling/database.py schema - has kv_cache_size_mb, kv_cache_utilization_pct. Read profiled_generate - no KV cache measurement code.",
+        "test": "Check profiling run. kv_cache_size_mb is null.",
+        "fix": "1. After generation, estimate KV cache size: layers * 2 (k,v) * seq_len * head_dim * num_heads * dtype_size. 2. For models with past_key_values, measure actual tensor sizes. 3. Store in profiling run metrics.",
+        "verify": "Profiling runs should have kv_cache_size_mb populated with reasonable values."
+      }
+    },
+    {
+      "id": "BUG-033",
+      "title": "Fix model features extraction",
+      "description": "Database stores model features (num_layers, hidden_size, etc.) but profiling may not extract them from loaded model.",
+      "priority": "medium",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/main.py profiled_generate. Check if model config attributes are extracted and stored. Read model_detector.py for feature extraction.",
+        "test": "Check profiling run in database. num_layers, hidden_size, etc. may be null.",
+        "fix": "1. After model load, extract features from model.config: num_hidden_layers, hidden_size, intermediate_size, num_attention_heads, num_key_value_heads. 2. Calculate total_params. 3. Store in profiling run. 4. Use model_detector helper function.",
+        "verify": "Profiling runs should have all model feature columns populated."
+      }
+    },
+    {
+      "id": "BUG-034",
+      "title": "Add WebSocket heartbeat for connection health",
+      "description": "No heartbeat/ping mechanism for WebSocket connection. Long-idle connections may silently disconnect without frontend knowing.",
+      "priority": "low",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read src/lib/profilingWebsocket.ts. No ping/pong handling. Read backend WebSocket handler.",
+        "test": "Leave profiling page open for extended time without activity. WebSocket may disconnect silently.",
+        "fix": "1. Backend: FastAPI WebSocket has built-in ping support, enable it. 2. Frontend: Add ping interval timer, send ping every 30s. 3. Track last pong time, reconnect if no pong in 60s. 4. Show connection status indicator in UI.",
+        "verify": "WebSocket stays connected during long idle periods. Disconnection is detected and shown to user."
+      }
+    },
+    {
+      "id": "BUG-035",
+      "title": "Fix memory leak in power sample accumulation",
+      "description": "PowerMonitor accumulates samples in _samples list indefinitely. For long profiling runs, this can cause memory issues.",
+      "priority": "low",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/profiling/power_monitor.py _sampling_loop. Samples appended to _samples list. No limit or pruning.",
+        "test": "Run profiling for 10+ minutes. Monitor memory usage of backend process.",
+        "fix": "1. Add max_samples parameter to PowerMonitor (default 10000). 2. When limit reached, either: a) Remove oldest samples, or b) Downsample older data. 3. Ensure samples are saved to database before pruning. 4. Log warning when sample limit approached.",
+        "verify": "Long profiling runs don't cause unbounded memory growth."
+      }
+    },
+    {
+      "id": "BUG-036",
+      "title": "Add profiling cancellation support",
+      "description": "No way to cancel profiling mid-run. User must wait for generation to complete or restart server.",
+      "priority": "medium",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/main.py profiled_generate. No cancellation check in generation loop. Read frontend - no cancel button.",
+        "test": "Start profiling with long max_length. No way to stop it early.",
+        "fix": "1. Add cancel_profiling endpoint that sets a cancellation flag. 2. Check flag in generation loop, break if set. 3. Add Cancel button to ProfilingControls. 4. Clean up properly on cancellation (stop power monitor, emit event).",
+        "verify": "Can cancel profiling mid-run. Cleanup happens properly."
+      }
+    },
+    {
+      "id": "BUG-037",
+      "title": "Fix duplicate WebSocket connections on component remount",
+      "description": "ProfilingContext may create duplicate WebSocket connections when component unmounts and remounts quickly.",
+      "priority": "low",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read src/components/profiling/ProfilingContext.tsx useEffect for WebSocket setup. Check cleanup function.",
+        "test": "Navigate away from and back to profiler quickly. May see multiple WebSocket connections.",
+        "fix": "1. Use singleton pattern for WebSocket manager. 2. Properly cleanup on unmount: close WebSocket, remove listeners. 3. Check if already connected before creating new connection. 4. Add connection state management.",
+        "verify": "Navigating between pages doesn't create duplicate connections."
+      }
+    },
+    {
+      "id": "BUG-038",
+      "title": "Add export profiling data feature",
+      "description": "No way to export profiling data to CSV/JSON for external analysis or comparison.",
+      "priority": "low",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read database.py - data stored in SQLite. No export endpoints. Read frontend - no export UI.",
+        "test": "Cannot export profiling results to file.",
+        "fix": "1. Add GET /api/profiling/runs/{run_id}/export endpoint. 2. Support format query param: json, csv. 3. Include all metrics, tokens, power samples. 4. Add Export button to profiling results UI. 5. Trigger browser download.",
+        "verify": "Can export profiling run to JSON or CSV file."
+      }
+    },
+    {
+      "id": "BUG-039",
+      "title": "Fix RealTimeView duration calculation",
+      "description": "RealTimeView shows duration from last power sample timestamp, but this may be wrong if timestamp is absolute instead of relative.",
+      "priority": "low",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read src/components/profiling/RealTimeView.tsx line 185. Uses powerSamples[last].timestamp / 1000 for duration display.",
+        "test": "Check Duration stat during profiling. May show wrong value (very large if Unix timestamp).",
+        "fix": "1. Ensure timestamp is relative time in milliseconds. 2. Or calculate duration as: (last_sample.timestamp - first_sample.timestamp) / 1000. 3. Or use separate duration tracking from profiling start time.",
+        "verify": "Duration shows correct elapsed time since profiling started."
+      }
+    },
+    {
+      "id": "BUG-040",
+      "title": "Add model quantization detection",
+      "description": "Database has quantization_method field but profiling doesn't detect if model is quantized and what method was used.",
+      "priority": "low",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/profiling/model_detector.py. No quantization detection. Read database.py - has quantization_method, precision fields.",
+        "test": "Profile quantized model. quantization_method shows as null.",
+        "fix": "1. Add detect_quantization(model) to model_detector. 2. Check model.config for quantization info. 3. Detect bitsandbytes (check if layers have bnb_4bit_quant_type). 4. Detect GPTQ, AWQ, GGUF from config or file patterns. 5. Store detected method.",
+        "verify": "Quantized models have quantization_method and precision populated correctly."
+      }
+    },
+    {
+      "id": "BUG-041",
+      "title": "Fix ProfilingContext initial state race condition",
+      "description": "ProfilingContext may miss early WebSocket events if component renders before WebSocket connects.",
+      "priority": "low",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read src/components/profiling/ProfilingContext.tsx. WebSocket connects in useEffect. Events before connection complete are lost.",
+        "test": "Start profiling immediately after page load. May miss first few events.",
+        "fix": "1. Show loading state until WebSocket connected. 2. Or buffer events on backend until frontend confirms ready. 3. Or replay recent events on connect. 4. Add 'connected' state to ProfilingContext.",
+        "verify": "All profiling events are received even when starting immediately after page load."
+      }
+    },
+    {
+      "id": "BUG-042",
+      "title": "Add inference engine detection",
+      "description": "Database has inference_engine field but profiling doesn't detect what engine is being used (transformers, MLX, etc.).",
+      "priority": "low",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read database.py schema - has inference_engine field. Read main.py profiled_generate - uses transformers but doesn't store this.",
+        "test": "Check profiling run. inference_engine is null.",
+        "fix": "1. Detect inference engine based on how model was loaded. 2. For transformers: 'transformers'. 3. For MLX models: 'mlx'. 4. Pass to session.update_run_metrics() and store in database.",
+        "verify": "inference_engine field populated with correct value."
+      }
+    },
+    {
+      "id": "BUG-043",
+      "title": "Fix power baseline measurement timing",
+      "description": "Idle baseline measurement happens during profiling which includes model loading overhead. Should measure true idle baseline before any work.",
+      "priority": "medium",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/main.py profiled_generate. Check where measure_idle_baseline() is called relative to model loading.",
+        "test": "Baseline power may include model loading power spike if model loads during baseline.",
+        "fix": "1. Measure baseline before model loading (if model not cached). 2. Or measure baseline after model is loaded and warm. 3. Consider separate baseline endpoint that measures system idle without any model activity.",
+        "verify": "Baseline power reflects true idle state, not model loading."
+      }
+    },
+    {
+      "id": "BUG-044",
+      "title": "Add EOS token handling for different tokenizers",
+      "description": "Generation stop condition may not work correctly for all tokenizers. Some use different EOS token IDs or multiple EOS tokens.",
+      "priority": "medium",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/main.py generation code. Check how EOS token is handled. Different tokenizers have different eos_token_id values.",
+        "test": "Some models may generate beyond intended output or not stop at EOS.",
+        "fix": "1. Use tokenizer.eos_token_id for generation config. 2. Handle list of EOS tokens if model has multiple (pad_token_id, eos_token_id). 3. Add max_new_tokens as hard limit. 4. Don't count EOS in token stats.",
+        "verify": "Generation stops at EOS token. Token count excludes EOS."
+      }
+    },
+    {
+      "id": "BUG-045",
+      "title": "Fix attention mask handling for padded inputs",
+      "description": "If input is padded, attention mask should be passed to generation but may not be handled correctly for all model types.",
+      "priority": "medium",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/main.py tokenization and generation. Check if attention_mask is passed to model.generate().",
+        "test": "Profile with short prompt that gets padded. Model may attend to padding tokens.",
+        "fix": "1. Always create attention_mask from tokenizer output. 2. Pass attention_mask to model.generate(). 3. For models that don't support attention_mask kwarg, handle appropriately.",
+        "verify": "Padded inputs handled correctly. Model only attends to real tokens."
+      }
+    },
+    {
+      "id": "BUG-046",
+      "title": "Add CPU/GPU device selection",
+      "description": "Profiling always uses default device. Should allow selection of specific device (CPU, GPU, MPS) for comparison.",
+      "priority": "low",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/main.py model loading. Uses device_map='auto'. No user control over device.",
+        "test": "Cannot force model to run on CPU vs MPS for comparison.",
+        "fix": "1. Add device field to ProfiledGenerateRequest (auto, cpu, cuda, mps). 2. Pass device to model loading. 3. Handle device-specific optimizations (torch.compile, etc.). 4. Store device used in profiling run.",
+        "verify": "Can select device for profiling. Different devices produce different energy profiles."
+      }
+    },
+    {
+      "id": "BUG-047",
+      "title": "Fix concurrent profiling request handling",
+      "description": "If two profiling requests start simultaneously, they may interfere with each other (shared model state, WebSocket events).",
+      "priority": "medium",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/main.py profiled_generate. Uses global model state and WebSocket manager. No request isolation.",
+        "test": "Start two profiling requests simultaneously. Events may mix up or one may fail.",
+        "fix": "1. Add request locking - only one profiling request at a time. 2. Return 429 Too Many Requests if profiling already running. 3. Or implement request queuing. 4. Each request should have unique session ID for event routing.",
+        "verify": "Concurrent requests handled gracefully - either queued or rejected with clear error."
+      }
+    },
+    {
+      "id": "BUG-048",
+      "title": "Add warmup run option",
+      "description": "First inference run is often slower due to compilation and cache warming. Should have option for warmup run before measured profiling.",
+      "priority": "low",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/main.py profiled_generate. No warmup option. First run includes one-time costs.",
+        "test": "First profiling run is slower than subsequent runs with same model/prompt.",
+        "fix": "1. Add warmup field to ProfiledGenerateRequest (default false). 2. If true, run a short inference first without profiling. 3. Then run the actual profiled inference. 4. Document warmup option in API.",
+        "verify": "With warmup enabled, profiled metrics don't include one-time compilation costs."
+      }
+    },
+    {
+      "id": "BUG-049",
+      "title": "Fix thread safety in LayerProfiler",
+      "description": "LayerProfiler stores metrics in shared state that may be accessed from multiple threads during inference, potentially causing data races.",
+      "priority": "medium",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read backend/profiling/layer_profiler.py. Check if metrics storage is thread-safe. Hook callbacks may run in different threads.",
+        "test": "Profile with high concurrency or rapid inference. May see missing or corrupted metrics.",
+        "fix": "1. Use threading.Lock for metrics storage access. 2. Or use thread-local storage like DeepAttentionProfiler does. 3. Ensure hook registration/unregistration is thread-safe.",
+        "verify": "No data races in layer profiler under concurrent access."
+      }
+    },
+    {
+      "id": "BUG-050",
+      "title": "Add profiling comparison feature",
+      "description": "No way to compare two profiling runs side-by-side. Users need to manually compare metrics.",
+      "priority": "low",
+      "passes": false,
+      "debug_steps": {
+        "review": "Read frontend components. No comparison view. Database has data but no comparison endpoint.",
+        "test": "Cannot visually compare two different profiling runs.",
+        "fix": "1. Add GET /api/profiling/compare?run_ids=id1,id2 endpoint. 2. Create ComparisonView.tsx component. 3. Show side-by-side metrics, delta values. 4. Highlight significant differences. 5. Allow selecting runs to compare.",
+        "verify": "Can select two runs and see side-by-side comparison with deltas."
+      }
+    }
+  ]
+}

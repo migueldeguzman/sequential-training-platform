@@ -1784,6 +1784,10 @@ async def profiled_generate(request: ProfiledGenerateRequest):
     from profiling.deep_profiler import DeepAttentionProfiler
     from profiling.database import ProfileDatabase
     from profiling.pipeline_profiler import InferencePipelineProfiler
+    from profiling.model_detector import is_streaming_compatible
+
+    # Capture the main event loop for thread-safe async operations
+    main_loop = asyncio.get_running_loop()
 
     model_dir = Path(request.model_path)
     if not model_dir.exists():
@@ -1865,8 +1869,8 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                         "total_power_mw": sample.total_power_mw
                     }
                 }
-                # Broadcast to all connected WebSocket clients
-                asyncio.create_task(profiling_manager.broadcast(message))
+                # Broadcast to all connected WebSocket clients (thread-safe)
+                asyncio.run_coroutine_threadsafe(profiling_manager.broadcast(message), main_loop)
             except Exception as e:
                 logger.error(f"Failed to stream power sample: {e}")
 
@@ -1883,8 +1887,8 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                         **data
                     }
                 }
-                # Broadcast to all connected WebSocket clients
-                asyncio.create_task(profiling_manager.broadcast(message))
+                # Broadcast to all connected WebSocket clients (thread-safe)
+                asyncio.run_coroutine_threadsafe(profiling_manager.broadcast(message), main_loop)
             except Exception as e:
                 logger.error(f"Failed to stream section event: {e}")
 
@@ -1905,8 +1909,8 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                         "layer_metrics_summary": token_data.get("layer_metrics_summary")
                     }
                 }
-                # Broadcast to all connected WebSocket clients
-                asyncio.create_task(profiling_manager.broadcast(message))
+                # Broadcast to all connected WebSocket clients (thread-safe)
+                asyncio.run_coroutine_threadsafe(profiling_manager.broadcast(message), main_loop)
             except Exception as e:
                 logger.error(f"Failed to stream token complete event: {e}")
 
@@ -1927,8 +1931,8 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                         "components": layer_metrics_data.get("components")
                     }
                 }
-                # Broadcast to all connected WebSocket clients
-                asyncio.create_task(profiling_manager.broadcast(message))
+                # Broadcast to all connected WebSocket clients (thread-safe)
+                asyncio.run_coroutine_threadsafe(profiling_manager.broadcast(message), main_loop)
             except Exception as e:
                 logger.error(f"Failed to stream layer metrics event: {e}")
 
@@ -1948,8 +1952,8 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                         "activation_stats": component_metrics_data.get("activation_stats")
                     }
                 }
-                # Broadcast to all connected WebSocket clients
-                asyncio.create_task(profiling_manager.broadcast(message))
+                # Broadcast to all connected WebSocket clients (thread-safe)
+                asyncio.run_coroutine_threadsafe(profiling_manager.broadcast(message), main_loop)
             except Exception as e:
                 logger.error(f"Failed to stream component metrics event: {e}")
 
@@ -1969,8 +1973,8 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                         "summary_statistics": inference_complete_data.get("summary_statistics")
                     }
                 }
-                # Broadcast to all connected WebSocket clients
-                asyncio.create_task(profiling_manager.broadcast(message))
+                # Broadcast to all connected WebSocket clients (thread-safe)
+                asyncio.run_coroutine_threadsafe(profiling_manager.broadcast(message), main_loop)
             except Exception as e:
                 logger.error(f"Failed to stream inference complete event: {e}")
 
@@ -2004,33 +2008,137 @@ async def profiled_generate(request: ProfiledGenerateRequest):
             with session.section("tensor_transfer", phase="pre_inference"):
                 inputs = {k: v.to(device) for k, v in inputs.items()}
 
-            # Prefill phase (single forward pass for entire prompt)
-            with session.section("prefill", phase="prefill"):
-                # Generate will handle both prefill and decode internally
-                # We profile it as one operation here for simplicity
-                with torch.no_grad():
-                    output = model.generate(
-                        inputs["input_ids"],
-                        attention_mask=inputs["attention_mask"],
-                        max_new_tokens=request.max_length,
-                        num_return_sequences=1,
-                        no_repeat_ngram_size=2,
-                        do_sample=request.temperature > 0,
-                        top_k=50,
-                        top_p=0.9,
-                        temperature=max(request.temperature, 0.01),
-                        use_cache=True,
-                        pad_token_id=tokenizer.pad_token_id,
+            # Check if model supports streaming generation
+            supports_streaming = is_streaming_compatible(model)
+
+            if supports_streaming:
+                # Use streaming generation for per-token profiling
+                from transformers import TextIteratorStreamer
+                import threading
+
+                streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+
+                generation_kwargs = {
+                    "input_ids": inputs["input_ids"],
+                    "attention_mask": inputs["attention_mask"],
+                    "max_new_tokens": request.max_length,
+                    "num_return_sequences": 1,
+                    "no_repeat_ngram_size": 2,
+                    "do_sample": request.temperature > 0,
+                    "top_k": 50,
+                    "top_p": 0.9,
+                    "temperature": max(request.temperature, 0.01),
+                    "use_cache": True,
+                    "pad_token_id": tokenizer.pad_token_id,
+                    "streamer": streamer,
+                }
+
+                # Run generation in a separate thread
+                generation_thread = threading.Thread(target=model.generate, kwargs=generation_kwargs)
+
+                # Prefill phase
+                with session.section("prefill", phase="prefill"):
+                    generation_thread.start()
+
+                # Decode phase - stream tokens one by one
+                generated_tokens = []
+                token_index = 0
+
+                with session.section("decode", phase="decode"):
+                    for token_text in streamer:
+                        if token_text:
+                            token_start = time.time()
+                            generated_tokens.append(token_text)
+                            token_end = time.time()
+                            token_duration_ms = (token_end - token_start) * 1000
+
+                            # Get current power for energy estimation
+                            current_power_mw = 0.0
+                            if profiler.power_monitor:
+                                current_sample = profiler.power_monitor.get_current()
+                                if current_sample:
+                                    current_power_mw = current_sample.total_power_mw
+
+                            # Estimate energy for this token (power * time)
+                            token_energy_mj = current_power_mw * token_duration_ms / 1000.0
+
+                            # Emit token event via WebSocket
+                            profiler.emit_token_complete_event(
+                                session=session,
+                                token_index=token_index,
+                                token_text=token_text,
+                                duration_ms=token_duration_ms,
+                                energy_mj=token_energy_mj,
+                                avg_power_mw=current_power_mw
+                            )
+                            token_index += 1
+
+                # Wait for generation to complete
+                generation_thread.join()
+            else:
+                # Use non-streaming generation for incompatible models (e.g., StableLM)
+                logger.info("Using non-streaming generation for model compatibility")
+                warnings.append("Using non-streaming mode due to model architecture limitations")
+
+                generation_kwargs = {
+                    "input_ids": inputs["input_ids"],
+                    "attention_mask": inputs["attention_mask"],
+                    "max_new_tokens": request.max_length,
+                    "num_return_sequences": 1,
+                    "no_repeat_ngram_size": 2,
+                    "do_sample": request.temperature > 0,
+                    "top_k": 50,
+                    "top_p": 0.9,
+                    "temperature": max(request.temperature, 0.01),
+                    "use_cache": False,  # Disable cache for problematic models
+                    "pad_token_id": tokenizer.pad_token_id,
+                    "return_dict_in_generate": True,
+                    "output_scores": True,
+                }
+
+                generated_tokens = []
+
+                # Prefill + Decode phase combined (non-streaming)
+                with session.section("prefill", phase="prefill"):
+                    generation_start = time.time()
+
+                with session.section("decode", phase="decode"):
+                    outputs = model.generate(**generation_kwargs)
+                    generation_end = time.time()
+
+                    # Extract generated token IDs (excluding input)
+                    input_length = inputs["input_ids"].shape[1]
+                    generated_ids = outputs.sequences[0][input_length:]
+
+                    # Decode tokens
+                    response_text = tokenizer.decode(generated_ids, skip_special_tokens=True)
+                    generated_tokens = [response_text]  # Store as single string
+
+                    # Calculate average time per token for reporting
+                    num_tokens = len(generated_ids)
+                    total_duration_ms = (generation_end - generation_start) * 1000
+                    avg_token_duration_ms = total_duration_ms / max(num_tokens, 1)
+
+                    # Get average power
+                    avg_power_mw = 0.0
+                    if profiler.power_monitor:
+                        current_sample = profiler.power_monitor.get_current()
+                        if current_sample:
+                            avg_power_mw = current_sample.total_power_mw
+
+                    # Emit a single aggregated token event
+                    profiler.emit_token_complete_event(
+                        session=session,
+                        token_index=0,
+                        token_text=response_text,
+                        duration_ms=total_duration_ms,
+                        energy_mj=avg_power_mw * total_duration_ms / 1000.0,
+                        avg_power_mw=avg_power_mw
                     )
 
             # Post-inference phase
+            response = "".join(generated_tokens)
             with session.section("detokenization", phase="post_inference"):
-                full_text = tokenizer.decode(output[0], skip_special_tokens=True)
-                if full_text.startswith(request.prompt):
-                    response = full_text[len(request.prompt):].strip()
-                else:
-                    response = full_text.strip()
-
                 session.response = response
 
         # Cleanup

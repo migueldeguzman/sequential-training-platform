@@ -1,0 +1,13 @@
+# Bug Fix Progress Log
+Created: Wed Jan 14 22:59:55 +04 2026
+
+[2026-01-14] BUG-001 - COMPLETED
+Status: Fixed async event loop error in power sample callback
+Description: Fixed 'no running event loop' errors in WebSocket callbacks by capturing the main event loop at the start of profiled_generate() and replacing all asyncio.create_task() calls with asyncio.run_coroutine_threadsafe() to safely broadcast messages from background threads. Updated 6 callbacks: stream_power_sample, stream_section_event, stream_token_complete, stream_layer_metrics, stream_component_metrics, and stream_inference_complete.
+Files Modified: backend/main.py
+
+[2026-01-14] BUG-002 - COMPLETED
+Status: Fixed StableLM model compatibility with TextIteratorStreamer
+Description: Added StableLM architecture detection in model_detector.py with _is_stablelm_structure() and _detect_stablelm() methods. Created is_streaming_compatible() function to identify models incompatible with TextIteratorStreamer. Modified backend/main.py profiled_generate endpoint to check streaming compatibility and use non-streaming generation (use_cache=False) for incompatible models like StableLM. This prevents crashes from KV cache issues while still allowing profiling to complete successfully with appropriate warnings.
+Files Modified: backend/profiling/model_detector.py, backend/main.py
+
