@@ -164,7 +164,7 @@
       "title": "Fix power sample timestamp using wrong base",
       "description": "Power samples use absolute Unix timestamp but frontend expects relative timestamp from profiling start for chart display.",
       "priority": "medium",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read backend/profiling/power_monitor.py PowerSample class. timestamp is Unix timestamp, relative_time_ms is from start. Check what frontend receives and expects.",
         "test": "Check power chart X-axis. May show huge timestamps instead of time since profiling start.",

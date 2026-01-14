@@ -1860,14 +1860,15 @@ async def profiled_generate(request: ProfiledGenerateRequest):
             try:
                 message = {
                     "type": ProfilingMessageType.POWER_SAMPLE,
-                    "timestamp": sample.timestamp,
+                    "timestamp": sample.relative_time_ms,  # Use relative time for frontend charts
                     "data": {
-                        "relative_time_ms": sample.relative_time_ms,
+                        "timestamp": sample.relative_time_ms,  # Time since profiling start (ms)
                         "cpu_power_mw": sample.cpu_power_mw,
                         "gpu_power_mw": sample.gpu_power_mw,
                         "ane_power_mw": sample.ane_power_mw,
                         "dram_power_mw": sample.dram_power_mw,
-                        "total_power_mw": sample.total_power_mw
+                        "total_power_mw": sample.total_power_mw,
+                        "phase": sample.phase
                     }
                 }
                 # Broadcast to all connected WebSocket clients (thread-safe)

@@ -61,3 +61,8 @@ Status: Fixed profiling cleanup on error
 Description: Fixed potential cleanup issues when profiling fails mid-execution. The InferencePipelineProfiler context manager already had proper cleanup in its finally block (lines 339-387 in pipeline_profiler.py), which handles stopping power monitoring, detaching layer profiler hooks, unpatching deep profiler, and saving data to database. However, backend/main.py had redundant cleanup code (lines 2157-2168) that was removed since the context manager handles it automatically. Added proper error handling in the except block to send profiling_error WebSocket events to the frontend when exceptions occur, using the existing ProfilingMessageType.ERROR message type. This ensures the frontend is notified of errors and all resources (PowerMonitor subprocess, layer hooks, deep profiler patches) are properly cleaned up even when profiling fails. Added import time statement to support error timestamp generation.
 Files Modified: backend/main.py
 
+[2026-01-14] BUG-013 - COMPLETED
+Status: Fixed power sample timestamp using wrong base
+Description: Fixed power sample timestamps in WebSocket events to use relative time instead of Unix timestamps. The backend was sending sample.timestamp (Unix timestamp) but the frontend PowerTimeSeriesChart expects timestamp in milliseconds relative to profiling start. Updated stream_power_sample callback in backend/main.py to send sample.relative_time_ms as the timestamp field in both the message and data objects. Also added the phase field to the data object for proper phase display in charts. This fix ensures the power chart X-axis shows time from 0 to profiling duration in seconds, rather than showing huge Unix timestamp values.
+Files Modified: backend/main.py
+
