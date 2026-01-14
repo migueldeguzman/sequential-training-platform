@@ -632,7 +632,7 @@
       "title": "Fix thread safety in LayerProfiler",
       "description": "LayerProfiler stores metrics in shared state that may be accessed from multiple threads during inference, potentially causing data races.",
       "priority": "medium",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read backend/profiling/layer_profiler.py. Check if metrics storage is thread-safe. Hook callbacks may run in different threads.",
         "test": "Profile with high concurrency or rapid inference. May see missing or corrupted metrics.",
