@@ -130,6 +130,8 @@ class ProfileDatabase:
                 carbon_intensity_g_per_kwh REAL DEFAULT 400.0,
                 cost_usd REAL,
                 co2_grams REAL,
+                precision TEXT,
+                quantization_method TEXT,
                 status TEXT DEFAULT 'running',
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
@@ -286,6 +288,19 @@ class ProfileDatabase:
             ON profiling_runs(tags)
         """)
 
+        # Migration: Add precision and quantization_method columns if they don't exist
+        # Check if columns exist
+        cursor.execute("PRAGMA table_info(profiling_runs)")
+        columns = [row[1] for row in cursor.fetchall()]
+
+        if "precision" not in columns:
+            cursor.execute("ALTER TABLE profiling_runs ADD COLUMN precision TEXT")
+            logger.info("Added precision column to profiling_runs table")
+
+        if "quantization_method" not in columns:
+            cursor.execute("ALTER TABLE profiling_runs ADD COLUMN quantization_method TEXT")
+            logger.info("Added quantization_method column to profiling_runs table")
+
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_tokens_phase_index
             ON tokens(run_id, phase, token_index)
@@ -317,6 +332,8 @@ class ProfileDatabase:
         batch_size: int = 1,
         electricity_price_per_kwh: float = 0.12,
         carbon_intensity_g_per_kwh: float = 400.0,
+        precision: Optional[str] = None,
+        quantization_method: Optional[str] = None,
     ) -> int:
         """Create a new profiling run record.
 
@@ -332,6 +349,8 @@ class ProfileDatabase:
             batch_size: Batch size used for inference
             electricity_price_per_kwh: Cost of electricity in USD per kWh (default: $0.12)
             carbon_intensity_g_per_kwh: Carbon intensity in grams CO2 per kWh (default: 400g for US grid)
+            precision: Model precision (FP32, FP16, BF16, FP8, INT8, INT4, MIXED)
+            quantization_method: Quantization method (gptq, awq, gguf, bitsandbytes, None)
 
         Returns:
             Database row ID of created run
@@ -342,14 +361,15 @@ class ProfileDatabase:
             INSERT INTO profiling_runs (
                 run_id, timestamp, model_name, prompt, response,
                 experiment_name, tags, profiling_depth, batch_size,
-                electricity_price_per_kwh, carbon_intensity_g_per_kwh, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running')
+                electricity_price_per_kwh, carbon_intensity_g_per_kwh,
+                precision, quantization_method, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running')
             """,
             (run_id, timestamp, model_name, prompt, response, experiment_name, tags, profiling_depth, batch_size,
-             electricity_price_per_kwh, carbon_intensity_g_per_kwh),
+             electricity_price_per_kwh, carbon_intensity_g_per_kwh, precision, quantization_method),
         )
         self.conn.commit()
-        logger.info(f"Created profiling run {run_id} with batch_size={batch_size}")
+        logger.info(f"Created profiling run {run_id} with batch_size={batch_size}, precision={precision}, quantization_method={quantization_method}")
         return cursor.lastrowid
 
     def update_run_metrics(

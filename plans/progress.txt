@@ -1,0 +1,16 @@
+Energy Profiler Progress Log
+=============================
+
+2026-01-14 | EP-081 | COMPLETED | Quantization Energy Comparison
+- Added precision and quantization_method detection in model_features.py
+- Implemented _detect_quantization function to detect FP32, FP16, BF16, FP8, INT8, INT4, MIXED precisions
+- Detects quantization methods: gptq, awq, gguf, bitsandbytes
+- Added compare_quantization_levels function for energy savings analysis
+- Added precision and quantization_method columns to profiling_runs table
+- Added database migration to handle existing databases
+- Updated ProfileDatabase.create_run to accept precision and quantization_method
+- Added /api/profiling/quantization-comparison endpoint
+- Added TypeScript types: QuantizationRunData, EnergySavings, QuantizationComparison
+- Updated ProfilingRun interface to include precision and quantization_method
+- All tests passing: frontend builds successfully, no Python syntax errors
+- Note: Apple Silicon M4 Max unified memory may show different quantization benefits vs NVIDIA GPUs

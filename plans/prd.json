@@ -1331,7 +1331,7 @@
       "title": "Quantization Energy Comparison",
       "description": "Compare energy consumption across different quantization levels",
       "priority": "LOW",
-      "passes": false,
+      "passes": true,
       "reference": "Paper Figure 8: Quantization significantly reduces energy in memory-constrained scenarios",
       "steps": [
         "Detect model precision (FP32, FP16, BF16, FP8, INT8, INT4)",

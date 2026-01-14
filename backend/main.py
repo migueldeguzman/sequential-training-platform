@@ -4208,6 +4208,165 @@ async def get_throughput_energy_tradeoff(
             db.close()
 
 
+@app.get("/api/profiling/quantization-comparison")
+async def get_quantization_comparison(
+    model_name_filter: Optional[str] = None,
+    base_model_name: Optional[str] = None
+):
+    """
+    Compare energy consumption across different quantization levels.
+
+    Based on TokenPowerBench research: Quantization significantly reduces energy
+    in memory-constrained scenarios, especially for large models.
+
+    Note: Apple Silicon (M4 Max) uses unified memory architecture, which may show
+    different quantization benefits compared to NVIDIA GPUs.
+
+    Args:
+        model_name_filter: Optional filter to include only models matching this name pattern
+        base_model_name: Optional base model name to compare different quantization levels of the same model
+
+    Returns:
+        {
+            "precision_levels": ["FP32", "FP16", "BF16", "FP8", "INT8", "INT4"],
+            "runs_by_precision": {
+                "FP16": [
+                    {
+                        "run_id": str,
+                        "model_name": str,
+                        "precision": str,
+                        "quantization_method": str | None,
+                        "energy_per_token_mj": float,
+                        "tokens_per_second": float,
+                        "total_energy_mj": float,
+                        "token_count": int
+                    }
+                ],
+                ...
+            },
+            "average_energy_per_token": {
+                "FP16": float,
+                "INT8": float,
+                ...
+            },
+            "energy_savings": {
+                "INT8_vs_FP16": {
+                    "absolute_mj": float,
+                    "percent": float
+                },
+                ...
+            },
+            "throughput": {
+                "FP16": float,
+                "INT8": float,
+                ...
+            },
+            "notes": [str]
+        }
+
+    Example usage:
+        GET /api/profiling/quantization-comparison
+        GET /api/profiling/quantization-comparison?base_model_name=llama-7b
+        GET /api/profiling/quantization-comparison?model_name_filter=llama
+    """
+    db = None
+    try:
+        from profiling.model_features import compare_quantization_levels
+
+        db = ProfileDatabase()
+        db.connect()
+
+        cursor = db.conn.cursor()
+
+        # Query runs with precision and quantization data
+        query = """
+            SELECT
+                run_id,
+                model_name,
+                precision,
+                quantization_method,
+                total_energy_mj,
+                token_count,
+                tokens_per_second
+            FROM profiling_runs
+            WHERE
+                precision IS NOT NULL
+                AND total_energy_mj IS NOT NULL
+                AND token_count IS NOT NULL
+                AND token_count > 0
+        """
+
+        params = []
+
+        if model_name_filter:
+            query += " AND model_name LIKE ?"
+            params.append(f"%{model_name_filter}%")
+
+        if base_model_name:
+            query += " AND model_name LIKE ?"
+            params.append(f"%{base_model_name}%")
+
+        query += " ORDER BY precision, model_name"
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        if not rows:
+            return {
+                "precision_levels": [],
+                "runs_by_precision": {},
+                "average_energy_per_token": {},
+                "energy_savings": {},
+                "throughput": {},
+                "notes": [
+                    "No profiling runs with quantization data found.",
+                    "Run models with different quantization levels to compare energy consumption."
+                ]
+            }
+
+        # Group runs by precision
+        runs_by_precision = {}
+
+        for row in rows:
+            run_id, model_name, precision, quantization_method, total_energy_mj, token_count, tokens_per_second = row
+
+            energy_per_token_mj = total_energy_mj / token_count if token_count > 0 else 0
+
+            run_data = {
+                "run_id": run_id,
+                "model_name": model_name,
+                "precision": precision,
+                "quantization_method": quantization_method,
+                "energy_per_token_mj": round(energy_per_token_mj, 6),
+                "tokens_per_second": round(tokens_per_second, 2) if tokens_per_second else 0,
+                "total_energy_mj": round(total_energy_mj, 2),
+                "token_count": token_count
+            }
+
+            if precision not in runs_by_precision:
+                runs_by_precision[precision] = []
+
+            runs_by_precision[precision].append(run_data)
+
+        # Use the compare_quantization_levels function from model_features
+        comparison = compare_quantization_levels(runs_by_precision)
+
+        # Add runs_by_precision to the output
+        comparison["runs_by_precision"] = runs_by_precision
+
+        return comparison
+
+    except Exception as e:
+        logger.error(f"Failed to get quantization comparison: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get quantization comparison: {str(e)}"
+        )
+    finally:
+        if db:
+            db.close()
+
+
 # WebSocket connection manager for profiling streams
 class ProfilingConnectionManager:
     """Manages WebSocket connections for real-time profiling data streaming."""

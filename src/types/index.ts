@@ -254,6 +254,8 @@ export interface ProfilingRun {
   num_key_value_heads?: number;
   attention_mechanism?: string; // MHA/GQA/MQA
   is_moe?: boolean;
+  precision?: string; // FP32, FP16, BF16, FP8, INT8, INT4, MIXED
+  quantization_method?: string; // gptq, awq, gguf, bitsandbytes, null
 
   // Calculated metrics
   prefill_energy_mj?: number;
@@ -608,4 +610,39 @@ export interface ThroughputEnergyTradeoff {
   pareto_frontier: ParetoFrontierPoint[];
   knee_point: KneePoint | null;
   statistics: ThroughputEnergyStatistics;
+}
+
+// EP-081: Quantization Energy Comparison types
+
+export interface QuantizationRunData {
+  run_id: string;
+  model_name: string;
+  precision: string;
+  quantization_method: string | null;
+  energy_per_token_mj: number;
+  tokens_per_second: number;
+  total_energy_mj: number;
+  token_count: number;
+}
+
+export interface EnergySavings {
+  absolute_mj: number;
+  percent: number;
+}
+
+export interface QuantizationComparison {
+  precision_levels: string[];
+  runs_by_precision: {
+    [precision: string]: QuantizationRunData[];
+  };
+  average_energy_per_token: {
+    [precision: string]: number;
+  };
+  energy_savings: {
+    [comparison: string]: EnergySavings;
+  };
+  throughput: {
+    [precision: string]: number;
+  };
+  notes: string[];
 }
