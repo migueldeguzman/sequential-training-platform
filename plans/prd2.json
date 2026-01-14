@@ -229,7 +229,7 @@
       "title": "Fix deep profiler attention metrics extraction",
       "description": "DeepAttentionProfiler may fail to extract attention weights from some model architectures where attention output format differs.",
       "priority": "medium",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read backend/profiling/deep_profiler.py _create_instrumented_forward. Assumes result tuple format (output, attention_weights, ...). Some models return different formats.",
         "test": "Enable deep profiling. Check if attention metrics (entropy, sparsity) are populated. May be zeros.",

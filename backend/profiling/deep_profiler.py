@@ -257,9 +257,15 @@ class DeepAttentionProfiler:
                 # Try to extract and compute attention metrics (EP-015)
                 attention_weights = None
                 if isinstance(result, tuple) and len(result) >= 2:
-                    potential_attn_weights = result[1]
-                    if isinstance(potential_attn_weights, torch.Tensor):
-                        attention_weights = potential_attn_weights
+                    # Try to find attention weights in the result tuple
+                    # Different architectures return them in different positions
+                    for item in result[1:]:  # Skip first element (always output)
+                        if isinstance(item, torch.Tensor):
+                            # Check if this tensor looks like attention weights
+                            # Attention weights typically have shape (batch, heads, seq, seq) or (batch, seq, seq)
+                            if item.dim() in [3, 4]:
+                                attention_weights = item
+                                break
 
                 if attention_weights is not None:
                     try:
@@ -271,6 +277,9 @@ class DeepAttentionProfiler:
                         metrics.avg_max_attention_weight = attn_metrics['avg_max_weight']
                         metrics.avg_attention_sparsity = attn_metrics['avg_sparsity']
                     except Exception as e:
+                        # Silently skip if attention metrics computation fails
+                        # This allows profiling to continue for architectures where
+                        # attention weights aren't available or have unexpected format
                         pass
 
                 # Store metrics
@@ -335,12 +344,18 @@ class DeepAttentionProfiler:
 
                 # Extract attention weights if available (EP-015)
                 # HuggingFace models typically return (output, attention_weights) or (output, attention_weights, cache)
+                # Different architectures may return attention weights in different positions
                 attention_weights = None
                 if isinstance(result, tuple) and len(result) >= 2:
-                    # Second element is usually attention weights when output_attentions=True
-                    potential_attn_weights = result[1]
-                    if isinstance(potential_attn_weights, torch.Tensor):
-                        attention_weights = potential_attn_weights
+                    # Try to find attention weights in the result tuple
+                    # Different architectures return them in different positions
+                    for item in result[1:]:  # Skip first element (always output)
+                        if isinstance(item, torch.Tensor):
+                            # Check if this tensor looks like attention weights
+                            # Attention weights typically have shape (batch, heads, seq, seq) or (batch, seq, seq)
+                            if item.dim() in [3, 4]:
+                                attention_weights = item
+                                break
 
                 # Compute extra metrics from attention weights (EP-015)
                 if attention_weights is not None:
@@ -353,7 +368,9 @@ class DeepAttentionProfiler:
                         metrics.avg_max_attention_weight = attn_metrics['avg_max_weight']
                         metrics.avg_attention_sparsity = attn_metrics['avg_sparsity']
                     except Exception as e:
-                        # If metric computation fails, continue without extra metrics
+                        # Silently skip if attention metrics computation fails
+                        # This allows profiling to continue for architectures where
+                        # attention weights aren't available or have unexpected format
                         pass
 
                 # Store metrics
