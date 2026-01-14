@@ -398,7 +398,7 @@
       "title": "Fix temperature and top_p not being applied",
       "description": "ProfilingControls sends temperature and top_p but they may not be applied to generation due to field name mismatch or missing handling.",
       "priority": "medium",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read src/components/profiling/ProfilingControls.tsx - sends temperature, top_p. Read backend/main.py ProfiledGenerateRequest and generation code.",
         "test": "Set temperature to 0 and generate. Output should be deterministic but may not be.",

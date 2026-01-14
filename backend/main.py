@@ -1763,6 +1763,7 @@ class ProfiledGenerateRequest(BaseModel):
     tags: Optional[list[str]] = None
     experiment_name: Optional[str] = None
     temperature: float = 0.7
+    top_p: float = 0.9
     max_length: int = 100
 
 
@@ -2080,7 +2081,7 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                     "no_repeat_ngram_size": 2,
                     "do_sample": request.temperature > 0,
                     "top_k": 50,
-                    "top_p": 0.9,
+                    "top_p": request.top_p,
                     "temperature": max(request.temperature, 0.01),
                     "use_cache": True,
                     "pad_token_id": tokenizer.pad_token_id,
@@ -2158,7 +2159,7 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                     "no_repeat_ngram_size": 2,
                     "do_sample": request.temperature > 0,
                     "top_k": 50,
-                    "top_p": 0.9,
+                    "top_p": request.top_p,
                     "temperature": max(request.temperature, 0.01),
                     "use_cache": False,  # Disable cache for problematic models
                     "pad_token_id": tokenizer.pad_token_id,

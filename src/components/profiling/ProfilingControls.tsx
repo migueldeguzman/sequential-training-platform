@@ -44,6 +44,7 @@ export function ProfilingControls() {
   const [tags, setTags] = useState<string>('');
   const [experimentName, setExperimentName] = useState<string>('');
   const [temperature, setTemperature] = useState<number>(0.7);
+  const [topP, setTopP] = useState<number>(0.9);
   const [maxLength, setMaxLength] = useState<number>(100);
 
   // Handle start profiling
@@ -61,6 +62,7 @@ export function ProfilingControls() {
       prompt: prompt.trim(),
       profiling_depth: profilingDepth,
       temperature,
+      top_p: topP,
       max_length: maxLength,
       model_path: modelPath,
     };
@@ -253,6 +255,28 @@ export function ProfilingControls() {
               <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
                 <span>0 (deterministic)</span>
                 <span>2 (creative)</span>
+              </div>
+            </div>
+
+            {/* Top P */}
+            <div>
+              <label htmlFor="top-p" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Top P (Nucleus Sampling): {topP}
+              </label>
+              <input
+                id="top-p"
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={topP}
+                onChange={(e) => setTopP(parseFloat(e.target.value))}
+                disabled={isRunning}
+                className="w-full"
+              />
+              <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                <span>0 (restrictive)</span>
+                <span>1 (all tokens)</span>
               </div>
             </div>
 

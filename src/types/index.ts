@@ -516,6 +516,7 @@ export interface ProfiledGenerateRequest {
   tags?: string[];
   experiment_name?: string;
   temperature?: number;
+  top_p?: number;
   max_length?: number;
 }
 
