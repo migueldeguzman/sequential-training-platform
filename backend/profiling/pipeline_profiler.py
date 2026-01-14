@@ -82,6 +82,7 @@ class ProfilingSession:
     electricity_price_per_kwh: float = 0.12
     carbon_intensity_g_per_kwh: float = 400.0
     inference_engine: Optional[str] = None
+    batch_size: int = 1  # Batch size for throughput analysis
 
     # Collected data during the session
     sections: List[SectionTiming] = field(default_factory=list)
@@ -231,6 +232,7 @@ class InferencePipelineProfiler:
         electricity_price_per_kwh: float = 0.12,
         carbon_intensity_g_per_kwh: float = 400.0,
         inference_engine: Optional[str] = None,
+        batch_size: int = 1,
         model=None
     ):
         """
@@ -288,6 +290,7 @@ class InferencePipelineProfiler:
             electricity_price_per_kwh=electricity_price_per_kwh,
             carbon_intensity_g_per_kwh=carbon_intensity_g_per_kwh,
             inference_engine=inference_engine,
+            batch_size=batch_size,
             power_monitor=self.power_monitor,
             layer_profiler=self.layer_profiler,
             deep_profiler=self.deep_profiler,
@@ -471,6 +474,7 @@ class InferencePipelineProfiler:
             experiment_name=session.experiment_name,
             tags=session.tags,
             profiling_depth=session.profiling_depth,
+            batch_size=session.batch_size,
             electricity_price_per_kwh=session.electricity_price_per_kwh,
             carbon_intensity_g_per_kwh=session.carbon_intensity_g_per_kwh,
             inference_engine=session.inference_engine

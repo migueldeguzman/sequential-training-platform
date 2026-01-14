@@ -1765,6 +1765,7 @@ class ProfiledGenerateRequest(BaseModel):
     temperature: float = 0.7
     top_p: float = 0.9
     max_length: int = 100
+    batch_size: int = 1  # Batch size for throughput analysis
 
 
 @app.post("/api/profiling/generate")
@@ -2061,6 +2062,7 @@ async def profiled_generate(request: ProfiledGenerateRequest):
             profiling_depth=request.profiling_depth,
             experiment_name=request.experiment_name,
             tags=request.tags,
+            batch_size=request.batch_size,
             model=model
         ) as session:
             # Store model features in session for database (BUG-033)
@@ -2079,8 +2081,10 @@ async def profiled_generate(request: ProfiledGenerateRequest):
 
             # Pre-inference phase
             with session.section("tokenization", phase="pre_inference"):
-                inputs = tokenizer(request.prompt, return_tensors="pt", padding=True)
-                # Track input token count for accurate per-token energy analysis
+                # Duplicate prompt for batch processing
+                prompts = [request.prompt] * request.batch_size
+                inputs = tokenizer(prompts, return_tensors="pt", padding=True)
+                # Track input token count for accurate per-token energy analysis (per sample)
                 session.input_token_count = len(inputs['input_ids'][0])
 
             with session.section("tensor_transfer", phase="pre_inference"):
@@ -2094,13 +2098,15 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                 from transformers import TextIteratorStreamer
                 import threading
 
+                # Note: TextIteratorStreamer works with batch_size=1 per stream
+                # For batch_size > 1, we process the first sequence in the batch
                 streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
 
                 generation_kwargs = {
                     "input_ids": inputs["input_ids"],
                     "attention_mask": inputs["attention_mask"],
                     "max_new_tokens": request.max_length,
-                    "num_return_sequences": 1,
+                    "num_return_sequences": 1,  # Per input in batch
                     "no_repeat_ngram_size": 2,
                     "do_sample": request.temperature > 0,
                     "top_k": 50,
@@ -2168,7 +2174,8 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                 generation_thread.join()
 
                 # Track output token count for accurate per-token energy analysis
-                session.output_token_count = len(generated_tokens)
+                # For batch processing, track total tokens across all sequences
+                session.output_token_count = len(generated_tokens) * request.batch_size
             else:
                 # Use non-streaming generation for incompatible models (e.g., StableLM)
                 logger.info("Using non-streaming generation for model compatibility")
@@ -2178,7 +2185,7 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                     "input_ids": inputs["input_ids"],
                     "attention_mask": inputs["attention_mask"],
                     "max_new_tokens": request.max_length,
-                    "num_return_sequences": 1,
+                    "num_return_sequences": 1,  # Per input in batch
                     "no_repeat_ngram_size": 2,
                     "do_sample": request.temperature > 0,
                     "top_k": 50,
@@ -2200,18 +2207,24 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                     outputs = model.generate(**generation_kwargs)
                     generation_end = time.time()
 
-                    # Extract generated token IDs (excluding input)
+                    # Extract generated token IDs (excluding input) for all sequences in batch
                     input_length = inputs["input_ids"].shape[1]
-                    generated_ids = outputs.sequences[0][input_length:]
 
-                    # Decode tokens
-                    response_text = tokenizer.decode(generated_ids, skip_special_tokens=True)
-                    generated_tokens = [response_text]  # Store as single string
+                    # Process all sequences in the batch
+                    all_generated_texts = []
+                    total_tokens_in_batch = 0
 
-                    # Calculate average time per token for reporting
-                    num_tokens = len(generated_ids)
+                    for batch_idx in range(request.batch_size):
+                        generated_ids = outputs.sequences[batch_idx][input_length:]
+                        response_text = tokenizer.decode(generated_ids, skip_special_tokens=True)
+                        all_generated_texts.append(response_text)
+                        total_tokens_in_batch += len(generated_ids)
+
+                    generated_tokens = all_generated_texts
+
+                    # Calculate average time per token for reporting (across batch)
                     total_duration_ms = (generation_end - generation_start) * 1000
-                    avg_token_duration_ms = total_duration_ms / max(num_tokens, 1)
+                    avg_token_duration_ms = total_duration_ms / max(total_tokens_in_batch, 1)
 
                     # Get average power
                     avg_power_mw = 0.0
@@ -2224,17 +2237,22 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                     profiler.emit_token_complete_event(
                         session=session,
                         token_index=0,
-                        token_text=response_text,
+                        token_text="\n---\n".join(all_generated_texts),  # Combine batch outputs
                         duration_ms=total_duration_ms,
                         energy_mj=avg_power_mw * total_duration_ms / 1000.0,
                         avg_power_mw=avg_power_mw
                     )
 
-                    # Track output token count for accurate per-token energy analysis
-                    session.output_token_count = num_tokens
+                    # Track output token count for accurate per-token energy analysis (total across batch)
+                    session.output_token_count = total_tokens_in_batch
 
             # Post-inference phase
-            response = "".join(generated_tokens)
+            # For batch processing, join outputs with separators
+            if request.batch_size > 1:
+                response = "\n---\n".join(generated_tokens)
+            else:
+                response = "".join(generated_tokens)
+
             with session.section("detokenization", phase="post_inference"):
                 session.response = response
 
@@ -2272,8 +2290,8 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                         elif model.dtype == torch.float16 or model.dtype == torch.bfloat16:
                             dtype_size = 2
 
-                    # Calculate total KV cache size in bytes
-                    kv_cache_size_bytes = num_layers * 2 * total_seq_len * num_kv_heads * head_dim * dtype_size
+                    # Calculate total KV cache size in bytes (multiplied by batch_size)
+                    kv_cache_size_bytes = num_layers * 2 * total_seq_len * num_kv_heads * head_dim * dtype_size * request.batch_size
 
                     # Convert to megabytes
                     kv_cache_size_mb = kv_cache_size_bytes / (1024 * 1024)

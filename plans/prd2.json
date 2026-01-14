@@ -385,7 +385,7 @@
       "title": "Add batch size support in profiling",
       "description": "Profiling currently assumes batch_size=1. Should support profiling with different batch sizes for throughput analysis.",
       "priority": "low",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read backend/main.py ProfiledGenerateRequest. Has max_length but no batch_size field. Generation code uses single input.",
         "test": "Cannot profile with batch_size > 1.",
