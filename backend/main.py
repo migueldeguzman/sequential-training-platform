@@ -2329,7 +2329,8 @@ async def get_profiling_runs(
                 tokens_per_joule = efficiency.get("tokens_per_joule", 0)
 
                 runs_with_summary.append({
-                    "run_id": run["run_id"],
+                    "id": run["run_id"],  # Frontend expects 'id' field
+                    "run_id": run["run_id"],  # Keep for backward compatibility
                     "timestamp": run["timestamp"],
                     "model_name": run["model_name"],
                     "prompt": run["prompt"],
@@ -2341,6 +2342,9 @@ async def get_profiling_runs(
                     "status": run.get("status"),
                     "total_duration_ms": total_duration_ms,
                     "total_energy_mj": total_energy_mj,
+                    # Frontend expects both naming conventions
+                    "input_tokens": run.get("input_token_count"),
+                    "output_tokens": run.get("output_token_count"),
                     "input_token_count": run.get("input_token_count"),
                     "output_token_count": run.get("output_token_count"),
                     "token_count": run.get("token_count"),
@@ -2354,7 +2358,8 @@ async def get_profiling_runs(
             else:
                 # Fallback if summary is not available
                 runs_with_summary.append({
-                    "run_id": run["run_id"],
+                    "id": run["run_id"],  # Frontend expects 'id' field
+                    "run_id": run["run_id"],  # Keep for backward compatibility
                     "timestamp": run["timestamp"],
                     "model_name": run["model_name"],
                     "prompt": run["prompt"],
@@ -2366,6 +2371,9 @@ async def get_profiling_runs(
                     "status": run.get("status"),
                     "total_duration_ms": None,
                     "total_energy_mj": None,
+                    # Frontend expects both naming conventions
+                    "input_tokens": None,
+                    "output_tokens": None,
                     "input_token_count": None,
                     "output_token_count": None,
                     "token_count": None,

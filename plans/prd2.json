@@ -333,7 +333,7 @@
       "title": "Add profiling history view",
       "description": "No UI to view past profiling runs. Database stores runs but no way to access them from frontend.",
       "priority": "low",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read backend/main.py - should have /api/profiling/runs endpoint. Read frontend - no component for viewing history.",
         "test": "After multiple profiling runs, no way to view previous results in UI.",
