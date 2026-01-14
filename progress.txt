@@ -3309,3 +3309,20 @@ Notes:
 - Based on TokenPowerBench finding: Batching improves both throughput and efficiency up to a point
 - Helps identify optimal configurations for balancing speed and energy consumption
 - Verified TypeScript compilation with npm run build (SUCCESS)
+
+[2026-01-14] EP-083: Apple Silicon vs Paper Comparison Notes - COMPLETED
+- Created comprehensive comparison documentation between Apple Silicon M4 Max and research papers (NVIDIA GPUs)
+- Documented Apple Silicon power measurement methodology using powermetrics
+- Power measurement differences: We measure CPU+GPU+ANE+DRAM (total system) vs papers measuring GPU only (~88%)
+- Unified Memory Architecture (UMA) differences: Single shared memory pool vs discrete GPU VRAM with PCIe transfers
+- Zero-copy memory access benefits: No CPU-GPU data transfer overhead
+- Noted lack of CUDA graphs on Apple Silicon (MPS backend limitations)
+- Software stack differences: PyTorch MPS → Metal vs PyTorch CUDA
+- Expected component power distribution differences: GPU ~50-70% (vs ~88%), CPU ~15-25% (vs ~8-10%), ANE ~5-15% (unique to Apple), DRAM ~10-15%
+- Documented metrics that should align: J/token, prefill vs decode ratio, architectural scaling relationships
+- Documented Apple-specific metrics: ANE power contribution, unified memory bandwidth, P-core vs E-core usage
+- Validation strategy for reproducing paper findings on different hardware
+- Interpretation guidelines for users comparing results across platforms
+- Future work suggestions: batch size sweeps, quantization comparisons, ANE utilization studies, MLX vs MPS energy comparison
+- Key insight: Same fundamental trends and relationships should hold, but absolute numbers will differ due to hardware architecture
+- Documentation file: docs/apple-silicon-comparison.md
