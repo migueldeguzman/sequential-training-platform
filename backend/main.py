@@ -2134,6 +2134,22 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                 # For batch_size > 1, we process the first sequence in the batch
                 streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
 
+                # Prepare EOS token IDs for proper generation termination (BUG-044)
+                # Different tokenizers use different conventions - handle all cases
+                eos_token_id = tokenizer.eos_token_id
+                # Some tokenizers have multiple EOS tokens, ensure we handle them all
+                if hasattr(tokenizer, 'eos_token_id') and tokenizer.eos_token_id is not None:
+                    if isinstance(tokenizer.eos_token_id, list):
+                        eos_token_id = tokenizer.eos_token_id
+                    else:
+                        eos_token_id = [tokenizer.eos_token_id]
+                    # Also include pad_token_id if different from EOS (for proper stopping)
+                    if tokenizer.pad_token_id is not None and tokenizer.pad_token_id not in eos_token_id:
+                        eos_token_id.append(tokenizer.pad_token_id)
+                else:
+                    # Fallback to None if no EOS token defined
+                    eos_token_id = None
+
                 generation_kwargs = {
                     "input_ids": inputs["input_ids"],
                     "attention_mask": inputs["attention_mask"],
@@ -2146,6 +2162,7 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                     "temperature": max(request.temperature, 0.01),
                     "use_cache": True,
                     "pad_token_id": tokenizer.pad_token_id,
+                    "eos_token_id": eos_token_id,
                     "streamer": streamer,
                 }
 
@@ -2218,6 +2235,22 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                 logger.info("Using non-streaming generation for model compatibility")
                 warnings.append("Using non-streaming mode due to model architecture limitations")
 
+                # Prepare EOS token IDs for proper generation termination (BUG-044)
+                # Different tokenizers use different conventions - handle all cases
+                eos_token_id = tokenizer.eos_token_id
+                # Some tokenizers have multiple EOS tokens, ensure we handle them all
+                if hasattr(tokenizer, 'eos_token_id') and tokenizer.eos_token_id is not None:
+                    if isinstance(tokenizer.eos_token_id, list):
+                        eos_token_id = tokenizer.eos_token_id
+                    else:
+                        eos_token_id = [tokenizer.eos_token_id]
+                    # Also include pad_token_id if different from EOS (for proper stopping)
+                    if tokenizer.pad_token_id is not None and tokenizer.pad_token_id not in eos_token_id:
+                        eos_token_id.append(tokenizer.pad_token_id)
+                else:
+                    # Fallback to None if no EOS token defined
+                    eos_token_id = None
+
                 generation_kwargs = {
                     "input_ids": inputs["input_ids"],
                     "attention_mask": inputs["attention_mask"],
@@ -2230,6 +2263,7 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                     "temperature": max(request.temperature, 0.01),
                     "use_cache": False,  # Disable cache for problematic models
                     "pad_token_id": tokenizer.pad_token_id,
+                    "eos_token_id": eos_token_id,
                     "return_dict_in_generate": True,
                     "output_scores": True,
                 }
@@ -2255,11 +2289,25 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                     all_generated_texts = []
                     total_tokens_in_batch = 0
 
+                    # Get EOS token IDs for filtering (BUG-044)
+                    eos_tokens = []
+                    if eos_token_id is not None:
+                        if isinstance(eos_token_id, list):
+                            eos_tokens = eos_token_id
+                        else:
+                            eos_tokens = [eos_token_id]
+
                     for batch_idx in range(request.batch_size):
                         generated_ids = outputs.sequences[batch_idx][input_length:]
                         response_text = tokenizer.decode(generated_ids, skip_special_tokens=True)
                         all_generated_texts.append(response_text)
-                        total_tokens_in_batch += len(generated_ids)
+
+                        # Count tokens excluding EOS tokens for accurate metrics (BUG-044)
+                        token_count = 0
+                        for token_id in generated_ids:
+                            if token_id.item() not in eos_tokens:
+                                token_count += 1
+                        total_tokens_in_batch += token_count
 
                     generated_tokens = all_generated_texts
 

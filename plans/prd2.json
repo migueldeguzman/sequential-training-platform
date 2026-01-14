@@ -567,7 +567,7 @@
       "title": "Add EOS token handling for different tokenizers",
       "description": "Generation stop condition may not work correctly for all tokenizers. Some use different EOS token IDs or multiple EOS tokens.",
       "priority": "medium",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read backend/main.py generation code. Check how EOS token is handled. Different tokenizers have different eos_token_id values.",
         "test": "Some models may generate beyond intended output or not stop at EOS.",
