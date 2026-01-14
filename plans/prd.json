@@ -1315,7 +1315,7 @@
       "title": "Long Context Energy Analysis",
       "description": "Track how context length affects energy consumption and KV cache pressure",
       "priority": "MEDIUM",
-      "passes": false,
+      "passes": true,
       "reference": "Paper Figure 2: Long context significantly increases energy, KV cache is bottleneck",
       "steps": [
         "Track KV cache memory usage per run",

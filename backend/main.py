@@ -3119,6 +3119,88 @@ async def cleanup_profiling_runs(
             db.close()
 
 
+@app.get("/api/profiling/long-context-analysis")
+def get_long_context_analysis(
+    run_id: Optional[str] = None,
+    model_name: Optional[str] = None
+):
+    """
+    Analyze how context length affects energy consumption and KV cache pressure.
+
+    Based on TokenPowerBench findings that long context significantly increases energy.
+    KV cache is a major bottleneck for long-context inference.
+
+    Query Parameters:
+        run_id: Optional specific run to analyze
+        model_name: Optional filter by model name
+
+    Returns:
+        {
+            "context_length_vs_energy": [
+                {
+                    "run_id": "abc123",
+                    "context_length": 1024,
+                    "energy_mj": 150.5,
+                    "energy_per_token_mj": 0.147,
+                    "duration_ms": 1250.3,
+                    "kv_cache_size_mb": 85.2,
+                    "kv_cache_utilization_pct": 42.5
+                },
+                ...
+            ],
+            "kv_cache_stats": {
+                "avg_utilization_pct": 35.2,
+                "max_utilization_pct": 78.5,
+                "min_utilization_pct": 12.1
+            },
+            "saturation_point": {
+                "context_length": 8192,
+                "energy_increase_pct": 25.3,
+                "message": "Energy per token increased by 25.3% at context length 8192"
+            },
+            "warnings": [
+                {
+                    "run_id": "xyz789",
+                    "context_length": 16384,
+                    "utilization_pct": 87.5,
+                    "message": "KV cache utilization at 87.5% - approaching memory limit"
+                }
+            ]
+        }
+
+    Example:
+        GET /api/profiling/long-context-analysis
+        - Analyze all runs
+
+        GET /api/profiling/long-context-analysis?model_name=llama-7b
+        - Analyze only llama-7b runs
+
+        GET /api/profiling/long-context-analysis?run_id=abc123
+        - Analyze specific run
+    """
+    db = None
+    try:
+        db = ProfileDatabase()
+        db.connect()
+
+        analysis = db.get_long_context_analysis(
+            run_id=run_id,
+            model_name=model_name
+        )
+
+        return analysis
+
+    except Exception as e:
+        logger.error(f"Failed to get long context analysis: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get long context analysis: {str(e)}"
+        )
+    finally:
+        if db:
+            db.close()
+
+
 # WebSocket connection manager for profiling streams
 class ProfilingConnectionManager:
     """Manages WebSocket connections for real-time profiling data streaming."""

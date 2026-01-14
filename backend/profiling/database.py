@@ -117,6 +117,10 @@ class ProfileDatabase:
                 baseline_ane_power_mw REAL,
                 baseline_dram_power_mw REAL,
                 baseline_sample_count INTEGER,
+                kv_cache_size_mb REAL,
+                kv_cache_utilization_pct REAL,
+                kv_cache_memory_limit_mb REAL,
+                context_length INTEGER,
                 status TEXT DEFAULT 'running',
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
@@ -356,6 +360,10 @@ class ProfileDatabase:
         baseline_ane_power_mw: Optional[float] = None,
         baseline_dram_power_mw: Optional[float] = None,
         baseline_sample_count: Optional[int] = None,
+        kv_cache_size_mb: Optional[float] = None,
+        kv_cache_utilization_pct: Optional[float] = None,
+        kv_cache_memory_limit_mb: Optional[float] = None,
+        context_length: Optional[int] = None,
         status: str = "completed",
     ) -> None:
         """Update run with final metrics.
@@ -385,6 +393,10 @@ class ProfileDatabase:
             baseline_ane_power_mw: Average idle baseline ANE power
             baseline_dram_power_mw: Average idle baseline DRAM power
             baseline_sample_count: Number of samples used for baseline
+            kv_cache_size_mb: KV cache memory usage in megabytes
+            kv_cache_utilization_pct: KV cache utilization as percentage of limit
+            kv_cache_memory_limit_mb: KV cache memory limit in megabytes
+            context_length: Total context length (input + output tokens)
             status: Run status (default: 'completed')
         """
         cursor = self.conn.cursor()
@@ -462,6 +474,18 @@ class ProfileDatabase:
         if baseline_sample_count is not None:
             updates.append("baseline_sample_count = ?")
             values.append(baseline_sample_count)
+        if kv_cache_size_mb is not None:
+            updates.append("kv_cache_size_mb = ?")
+            values.append(kv_cache_size_mb)
+        if kv_cache_utilization_pct is not None:
+            updates.append("kv_cache_utilization_pct = ?")
+            values.append(kv_cache_utilization_pct)
+        if kv_cache_memory_limit_mb is not None:
+            updates.append("kv_cache_memory_limit_mb = ?")
+            values.append(kv_cache_memory_limit_mb)
+        if context_length is not None:
+            updates.append("context_length = ?")
+            values.append(context_length)
 
         updates.append("status = ?")
         values.append(status)
@@ -1442,6 +1466,131 @@ class ProfileDatabase:
         stats["db_size_mb"] = stats["db_size_bytes"] / (1024 * 1024)
 
         return stats
+
+    def get_long_context_analysis(self, run_id: Optional[str] = None, model_name: Optional[str] = None) -> dict:
+        """Analyze how context length affects energy consumption and KV cache pressure.
+
+        Args:
+            run_id: Optional specific run to analyze. If None, analyzes all runs.
+            model_name: Optional filter by model name
+
+        Returns:
+            Dictionary with long context analysis:
+                - context_length_vs_energy: List of {context_length, energy_mj, energy_per_token}
+                - kv_cache_stats: KV cache utilization statistics
+                - saturation_point: Estimated context length where KV cache saturates (if detectable)
+                - warnings: List of warnings for runs approaching memory limits
+        """
+        cursor = self.conn.cursor()
+
+        # Build query with optional filters
+        query = """
+            SELECT
+                run_id,
+                context_length,
+                input_token_count,
+                output_token_count,
+                total_energy_mj,
+                total_duration_ms,
+                kv_cache_size_mb,
+                kv_cache_utilization_pct,
+                kv_cache_memory_limit_mb,
+                model_name
+            FROM profiling_runs
+            WHERE context_length IS NOT NULL
+        """
+        params = []
+
+        if run_id:
+            query += " AND run_id = ?"
+            params.append(run_id)
+
+        if model_name:
+            query += " AND model_name = ?"
+            params.append(model_name)
+
+        query += " ORDER BY context_length ASC"
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        if not rows:
+            return {
+                "context_length_vs_energy": [],
+                "kv_cache_stats": None,
+                "saturation_point": None,
+                "warnings": []
+            }
+
+        # Process data points
+        data_points = []
+        kv_cache_utilizations = []
+        warnings = []
+
+        for row in rows:
+            run_data = dict(row)
+            context_length = run_data["context_length"]
+            total_energy = run_data["total_energy_mj"]
+            token_count = run_data["input_token_count"] + run_data["output_token_count"]
+
+            energy_per_token = total_energy / token_count if token_count > 0 else 0
+
+            data_points.append({
+                "run_id": run_data["run_id"],
+                "context_length": context_length,
+                "energy_mj": total_energy,
+                "energy_per_token_mj": energy_per_token,
+                "duration_ms": run_data["total_duration_ms"],
+                "kv_cache_size_mb": run_data["kv_cache_size_mb"],
+                "kv_cache_utilization_pct": run_data["kv_cache_utilization_pct"]
+            })
+
+            # Track KV cache utilization
+            if run_data["kv_cache_utilization_pct"] is not None:
+                kv_cache_utilizations.append(run_data["kv_cache_utilization_pct"])
+
+            # Check for approaching memory limits
+            if run_data["kv_cache_utilization_pct"] and run_data["kv_cache_utilization_pct"] > 80:
+                warnings.append({
+                    "run_id": run_data["run_id"],
+                    "context_length": context_length,
+                    "utilization_pct": run_data["kv_cache_utilization_pct"],
+                    "message": f"KV cache utilization at {run_data['kv_cache_utilization_pct']:.1f}% - approaching memory limit"
+                })
+
+        # Calculate KV cache statistics
+        kv_cache_stats = None
+        if kv_cache_utilizations:
+            kv_cache_stats = {
+                "avg_utilization_pct": sum(kv_cache_utilizations) / len(kv_cache_utilizations),
+                "max_utilization_pct": max(kv_cache_utilizations),
+                "min_utilization_pct": min(kv_cache_utilizations)
+            }
+
+        # Detect saturation point (where energy per token starts increasing sharply)
+        # Simple heuristic: find context length where energy/token increases by >20% from previous
+        saturation_point = None
+        if len(data_points) >= 3:
+            for i in range(1, len(data_points)):
+                prev_ept = data_points[i-1]["energy_per_token_mj"]
+                curr_ept = data_points[i]["energy_per_token_mj"]
+
+                if prev_ept > 0:
+                    increase_pct = ((curr_ept - prev_ept) / prev_ept) * 100
+                    if increase_pct > 20:
+                        saturation_point = {
+                            "context_length": data_points[i]["context_length"],
+                            "energy_increase_pct": increase_pct,
+                            "message": f"Energy per token increased by {increase_pct:.1f}% at context length {data_points[i]['context_length']}"
+                        }
+                        break
+
+        return {
+            "context_length_vs_energy": data_points,
+            "kv_cache_stats": kv_cache_stats,
+            "saturation_point": saturation_point,
+            "warnings": warnings
+        }
 
 
 def init_database(db_path: str = "backend/profiling.db") -> ProfileDatabase:
