@@ -112,7 +112,7 @@
       "title": "Add model streaming compatibility check",
       "description": "Not all models support TextIteratorStreamer. Need to check model compatibility before using streaming generation.",
       "priority": "high",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "TextIteratorStreamer works with most HuggingFace models but some (like StableLM with certain configs) have issues. No compatibility check exists.",
         "test": "Profile with various models. Some crash or behave unexpectedly with TextIteratorStreamer.",
