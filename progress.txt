@@ -3239,3 +3239,19 @@ Notes:
 - Minimum 5 profiling runs required for training
 - Supports what-if analysis and model comparison before running inference
 - Model stored in backend/profiling/energy_model.json
+
+2026-01-14 | EP-089 | COMPLETED | Cost and Carbon Estimation
+- Added electricity_price_per_kwh and carbon_intensity_g_per_kwh fields to profiling_runs table
+- Added cost_usd and co2_grams calculated fields
+- Updated ProfileDatabase.create_run() to accept pricing/carbon parameters (defaults: $0.12/kWh, 400g/kWh)
+- Updated ProfileDatabase.update_run_metrics() to store calculated cost and emissions
+- Added cost_carbon_metrics to get_run_summary() with comprehensive calculations
+- Updated ProfilingSession and InferencePipelineProfiler.run() to accept pricing/carbon params
+- Added cost/carbon calculation in pipeline_profiler before storing final metrics
+- Conversion formula: energy_kwh = energy_mj / 3600000.0
+- Cost formula: cost_usd = energy_kwh × electricity_price_per_kwh  
+- Carbon formula: co2_grams = energy_kwh × carbon_intensity_g_per_kwh
+- Created CostCarbonCard.tsx frontend component
+- Added cost_carbon_metrics interface to TypeScript ProfilingRunSummary type
+- Based on TokenPowerBench methodology for sustainability reporting
+- Verified TypeScript compilation with npm run build (SUCCESS)

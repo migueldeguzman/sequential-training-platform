@@ -79,6 +79,8 @@ class ProfilingSession:
     profiling_depth: str
     experiment_name: Optional[str] = None
     tags: Optional[str] = None
+    electricity_price_per_kwh: float = 0.12
+    carbon_intensity_g_per_kwh: float = 400.0
 
     # Collected data during the session
     sections: List[SectionTiming] = field(default_factory=list)
@@ -203,7 +205,9 @@ class InferencePipelineProfiler:
         model_name: str,
         profiling_depth: str = "module",
         experiment_name: Optional[str] = None,
-        tags: Optional[str] = None
+        tags: Optional[str] = None,
+        electricity_price_per_kwh: float = 0.12,
+        carbon_intensity_g_per_kwh: float = 400.0
     ):
         """
         Context manager for a profiling run session.
@@ -221,6 +225,8 @@ class InferencePipelineProfiler:
             profiling_depth: 'module' or 'deep' profiling level
             experiment_name: Optional experiment name for organization
             tags: Optional comma-separated tags
+            electricity_price_per_kwh: Cost of electricity in USD per kWh (default: $0.12)
+            carbon_intensity_g_per_kwh: Carbon intensity in grams CO2 per kWh (default: 400g for US grid)
 
         Yields:
             ProfilingSession object with section() context manager
@@ -247,6 +253,8 @@ class InferencePipelineProfiler:
             profiling_depth=profiling_depth,
             experiment_name=experiment_name,
             tags=tags,
+            electricity_price_per_kwh=electricity_price_per_kwh,
+            carbon_intensity_g_per_kwh=carbon_intensity_g_per_kwh,
             power_monitor=self.power_monitor,
             layer_profiler=self.layer_profiler,
             deep_profiler=self.deep_profiler,
@@ -433,11 +441,31 @@ class InferencePipelineProfiler:
             response=session.response,
             experiment_name=session.experiment_name,
             tags=session.tags,
-            profiling_depth=session.profiling_depth
+            profiling_depth=session.profiling_depth,
+            electricity_price_per_kwh=session.electricity_price_per_kwh,
+            carbon_intensity_g_per_kwh=session.carbon_intensity_g_per_kwh
         )
 
         # Get peak power metrics
         peak_power_metrics = self.power_monitor.get_peak_power() if self.power_monitor else {}
+
+        # Calculate cost and carbon emissions (EP-089)
+        cost_usd = None
+        co2_grams = None
+        if total_energy_mj is not None and total_energy_mj > 0:
+            # Convert mJ to kWh: mJ -> J -> Wh -> kWh
+            # 1 mJ = 0.001 J
+            # 1 Wh = 3600 J
+            # 1 kWh = 1000 Wh
+            total_energy_kwh = total_energy_mj / 3600000.0
+
+            # Calculate cost: energy (kWh) × price ($/kWh)
+            cost_usd = total_energy_kwh * session.electricity_price_per_kwh
+
+            # Calculate CO2 emissions: energy (kWh) × carbon intensity (g/kWh)
+            co2_grams = total_energy_kwh * session.carbon_intensity_g_per_kwh
+
+            logger.debug(f"Calculated cost: ${cost_usd:.6f}, CO2: {co2_grams:.2f}g for run {session.run_id}")
 
         # Update run with calculated metrics
         self.database.update_run_metrics(
@@ -465,6 +493,8 @@ class InferencePipelineProfiler:
             baseline_ane_power_mw=session.baseline_metrics.get('baseline_ane_power_mw') if session.baseline_metrics else None,
             baseline_dram_power_mw=session.baseline_metrics.get('baseline_dram_power_mw') if session.baseline_metrics else None,
             baseline_sample_count=session.baseline_metrics.get('baseline_sample_count') if session.baseline_metrics else None,
+            cost_usd=cost_usd,
+            co2_grams=co2_grams,
             status="completed"
         )
 

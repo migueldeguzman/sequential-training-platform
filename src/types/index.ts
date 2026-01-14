@@ -376,6 +376,17 @@ export interface ProfilingRunSummary {
     dram_energy_mj: number;
     total_energy_mj: number;
   }[];
+  // EP-089: Cost and carbon estimation metrics
+  cost_carbon_metrics?: {
+    cost_usd: number; // Total electricity cost in USD
+    co2_grams: number; // Total CO2 emissions in grams
+    co2_kg: number; // Total CO2 emissions in kg (for convenience)
+    cost_per_token_usd: number; // Cost per token
+    co2_per_token_grams: number; // CO2 per token
+    electricity_price_per_kwh: number; // Electricity price used ($/kWh)
+    carbon_intensity_g_per_kwh: number; // Carbon intensity used (g/kWh)
+    equivalent_car_miles: number; // Equivalent car miles for CO2 emissions
+  };
 }
 
 // WebSocket message types

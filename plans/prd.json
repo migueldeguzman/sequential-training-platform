@@ -1464,7 +1464,7 @@
       "title": "Cost and Carbon Estimation",
       "description": "Estimate electricity cost and CO2 emissions from energy consumption",
       "priority": "MEDIUM",
-      "passes": false,
+      "passes": true,
       "reference": "TokenPowerBench: Converts kWh to dollar cost and CO2 for sustainability reporting",
       "steps": [
         "Add settings for electricity_price_per_kwh (default: $0.12)",

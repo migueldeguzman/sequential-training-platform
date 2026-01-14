@@ -126,6 +126,10 @@ class ProfileDatabase:
                 edp_per_token REAL,
                 prefill_edp REAL,
                 decode_edp REAL,
+                electricity_price_per_kwh REAL DEFAULT 0.12,
+                carbon_intensity_g_per_kwh REAL DEFAULT 400.0,
+                cost_usd REAL,
+                co2_grams REAL,
                 status TEXT DEFAULT 'running',
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
@@ -311,6 +315,8 @@ class ProfileDatabase:
         tags: Optional[str] = None,
         profiling_depth: str = "module",
         batch_size: int = 1,
+        electricity_price_per_kwh: float = 0.12,
+        carbon_intensity_g_per_kwh: float = 400.0,
     ) -> int:
         """Create a new profiling run record.
 
@@ -324,6 +330,8 @@ class ProfileDatabase:
             tags: Comma-separated tags
             profiling_depth: 'module' or 'deep'
             batch_size: Batch size used for inference
+            electricity_price_per_kwh: Cost of electricity in USD per kWh (default: $0.12)
+            carbon_intensity_g_per_kwh: Carbon intensity in grams CO2 per kWh (default: 400g for US grid)
 
         Returns:
             Database row ID of created run
@@ -333,10 +341,12 @@ class ProfileDatabase:
             """
             INSERT INTO profiling_runs (
                 run_id, timestamp, model_name, prompt, response,
-                experiment_name, tags, profiling_depth, batch_size, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'running')
+                experiment_name, tags, profiling_depth, batch_size,
+                electricity_price_per_kwh, carbon_intensity_g_per_kwh, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running')
             """,
-            (run_id, timestamp, model_name, prompt, response, experiment_name, tags, profiling_depth, batch_size),
+            (run_id, timestamp, model_name, prompt, response, experiment_name, tags, profiling_depth, batch_size,
+             electricity_price_per_kwh, carbon_intensity_g_per_kwh),
         )
         self.conn.commit()
         logger.info(f"Created profiling run {run_id} with batch_size={batch_size}")
@@ -377,6 +387,8 @@ class ProfileDatabase:
         edp_per_token: Optional[float] = None,
         prefill_edp: Optional[float] = None,
         decode_edp: Optional[float] = None,
+        cost_usd: Optional[float] = None,
+        co2_grams: Optional[float] = None,
         status: str = "completed",
     ) -> None:
         """Update run with final metrics.
@@ -415,6 +427,8 @@ class ProfileDatabase:
             edp_per_token: EDP normalized by token count
             prefill_edp: EDP for prefill phase only
             decode_edp: EDP for decode phase only
+            cost_usd: Estimated electricity cost in USD
+            co2_grams: Estimated CO2 emissions in grams
             status: Run status (default: 'completed')
         """
         cursor = self.conn.cursor()
@@ -519,6 +533,12 @@ class ProfileDatabase:
         if decode_edp is not None:
             updates.append("decode_edp = ?")
             values.append(decode_edp)
+        if cost_usd is not None:
+            updates.append("cost_usd = ?")
+            values.append(cost_usd)
+        if co2_grams is not None:
+            updates.append("co2_grams = ?")
+            values.append(co2_grams)
 
         updates.append("status = ?")
         values.append(status)
@@ -1164,6 +1184,57 @@ class ProfileDatabase:
             efficiency_metrics["joules_per_output_token"] = 0
 
         summary["efficiency_metrics"] = efficiency_metrics
+
+        # Calculate cost and carbon estimates (EP-089)
+        cost_carbon_metrics = {}
+
+        # Get electricity price and carbon intensity from run settings
+        electricity_price = summary.get("electricity_price_per_kwh", 0.12)
+        carbon_intensity = summary.get("carbon_intensity_g_per_kwh", 400.0)
+
+        if summary.get("total_energy_mj"):
+            # Convert mJ to kWh: mJ -> J -> Wh -> kWh
+            # 1 mJ = 0.001 J
+            # 1 Wh = 3600 J
+            # 1 kWh = 1000 Wh
+            total_energy_kwh = summary["total_energy_mj"] / 3600000.0
+
+            # Calculate cost: energy (kWh) × price ($/kWh)
+            cost_carbon_metrics["cost_usd"] = total_energy_kwh * electricity_price
+
+            # Calculate CO2 emissions: energy (kWh) × carbon intensity (g/kWh)
+            cost_carbon_metrics["co2_grams"] = total_energy_kwh * carbon_intensity
+
+            # Also provide in kg for convenience
+            cost_carbon_metrics["co2_kg"] = cost_carbon_metrics["co2_grams"] / 1000.0
+
+            # Calculate per-token costs
+            if summary.get("token_count") and summary["token_count"] > 0:
+                cost_carbon_metrics["cost_per_token_usd"] = cost_carbon_metrics["cost_usd"] / summary["token_count"]
+                cost_carbon_metrics["co2_per_token_grams"] = cost_carbon_metrics["co2_grams"] / summary["token_count"]
+            else:
+                cost_carbon_metrics["cost_per_token_usd"] = 0
+                cost_carbon_metrics["co2_per_token_grams"] = 0
+
+            # Store settings used for calculation
+            cost_carbon_metrics["electricity_price_per_kwh"] = electricity_price
+            cost_carbon_metrics["carbon_intensity_g_per_kwh"] = carbon_intensity
+
+            # Provide context: equivalent CO2 comparisons
+            # Average car emits ~404g CO2 per mile (EPA 2023)
+            if cost_carbon_metrics["co2_grams"] > 0:
+                cost_carbon_metrics["equivalent_car_miles"] = cost_carbon_metrics["co2_grams"] / 404.0
+        else:
+            cost_carbon_metrics["cost_usd"] = 0
+            cost_carbon_metrics["co2_grams"] = 0
+            cost_carbon_metrics["co2_kg"] = 0
+            cost_carbon_metrics["cost_per_token_usd"] = 0
+            cost_carbon_metrics["co2_per_token_grams"] = 0
+            cost_carbon_metrics["electricity_price_per_kwh"] = electricity_price
+            cost_carbon_metrics["carbon_intensity_g_per_kwh"] = carbon_intensity
+            cost_carbon_metrics["equivalent_car_miles"] = 0
+
+        summary["cost_carbon_metrics"] = cost_carbon_metrics
 
         # Calculate Energy-Delay Product (EDP) metrics (EP-088)
         edp_metrics = {}
