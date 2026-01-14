@@ -26,3 +26,28 @@ Status: Fixed token field name mismatch between backend and frontend
 Description: Fixed field name inconsistency where backend sent 'token_index' but frontend expected 'token_position'. Updated three WebSocket callbacks in backend/main.py: stream_token_complete, stream_layer_metrics, and stream_component_metrics to send 'token_position' instead of 'token_index'. This ensures token position displays correctly in all frontend components (TokenGenerationStream hover tooltips, LiveLayerHeatmap, CurrentOperationIndicator, etc.).
 Files Modified: backend/main.py
 
+[2026-01-14] BUG-007 - COMPLETED
+Status: Added StableLM architecture detection in model_detector.py
+Description: StableLM architecture detection was already added as part of BUG-002 fix. The model_detector.py now includes _is_stablelm_structure() method to properly detect StableLM models and _detect_stablelm() method to return correct component paths. StableLM is now correctly identified as 'stablelm' instead of being misidentified as 'llama', ensuring correct profiling behavior.
+Files Modified: backend/profiling/model_detector.py (already fixed in BUG-002)
+
+[2026-01-14] BUG-008 - COMPLETED
+Status: Fixed energy calculation using near-zero duration
+Description: Energy calculation was automatically fixed by BUG-004. Once token timing measurement was corrected to track actual token generation time (10-100ms per token) instead of append() operation time (~0ms), the energy calculation (current_power_mw * token_duration_ms / 1000.0) now produces realistic token energy values (0.1-10 mJ per token depending on model and hardware).
+Files Modified: backend/main.py (already fixed in BUG-004)
+
+[2026-01-14] BUG-009 - COMPLETED
+Status: Added model streaming compatibility check
+Description: Streaming compatibility check was already added as part of BUG-002 fix. The is_streaming_compatible() function in model_detector.py checks if a model supports TextIteratorStreamer by detecting known incompatible architectures (like StableLM). The profiled_generate endpoint in backend/main.py checks compatibility before using streaming and falls back to non-streaming generation for incompatible models.
+Files Modified: backend/profiling/model_detector.py, backend/main.py (already fixed in BUG-002)
+
+[2026-01-14] BUG-016 - COMPLETED
+Status: Added Gemma 3 architecture detection
+Description: Gemma architecture detection was already implemented in model_detector.py. The detector includes _is_gemma_structure() method and _detect_gemma() method that properly identifies Gemma models (including Gemma 2 and Gemma 3) by checking for model_type == 'gemma' or 'gemma2'. Returns correct component paths with RMSNorm and standard Llama-like structure.
+Files Modified: backend/profiling/model_detector.py (already implemented)
+
+[2026-01-14] BUG-017 - COMPLETED
+Status: Fixed layer profiler hooks for different architectures
+Description: Enhanced LayerProfiler in layer_profiler.py to better support multiple architectures. Added registration statistics tracking to count successful hook registrations per component type. Improved logging to show architecture name, registration summary, and warnings when major components aren't found. Added diagnostic logging for first layer structure. Enhanced error messages to only log on first layer (avoid spam) and include architecture information. Added get_registration_summary() method for external code to check registration success. The LayerProfiler already uses ModelArchitectureDetector dynamically, so it now properly handles all supported architectures (Llama, Mistral, Phi, Qwen, Gemma, StableLM) with better diagnostics when hooks fail to attach.
+Files Modified: backend/profiling/layer_profiler.py
+

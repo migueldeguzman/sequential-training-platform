@@ -103,7 +103,8 @@ class LayerProfiler:
             logger.warning("Hooks already registered, skipping")
             return
 
-        logger.info(f"Registering hooks on {self.component_paths.num_layers} layers")
+        logger.info(f"Registering hooks on {self.component_paths.num_layers} layers "
+                   f"for {self.component_paths.architecture} architecture")
 
         # Get layers from model
         layers = self._get_layers()
@@ -111,12 +112,28 @@ class LayerProfiler:
         if not layers:
             raise ValueError(f"Could not access layers at path: {self.component_paths.layers_path}")
 
+        # Track registration statistics
+        self._registration_stats = {
+            'q_proj': 0, 'k_proj': 0, 'v_proj': 0, 'o_proj': 0,
+            'gate_proj': 0, 'up_proj': 0, 'down_proj': 0,
+            'input_layernorm': 0, 'post_attention_layernorm': 0
+        }
+
         # Register hooks on each layer
         for layer_idx, layer in enumerate(layers):
             self._register_layer_hooks(layer, layer_idx)
 
         self._hooks_registered = True
-        logger.info(f"Registered {len(self.hook_handles)} hooks total")
+
+        # Log registration summary
+        logger.info(f"Registered {len(self.hook_handles)} hooks total across {self.component_paths.num_layers} layers")
+        logger.info(f"Hook registration summary: {self._registration_stats}")
+
+        # Warn if no hooks were registered for major component types
+        if self._registration_stats['q_proj'] == 0:
+            logger.warning("No attention query projection hooks registered - model may not be compatible")
+        if self._registration_stats['up_proj'] == 0:
+            logger.warning("No MLP up projection hooks registered - model may not be compatible")
 
     def _get_thread_timings(self) -> List[ComponentTiming]:
         """
@@ -138,10 +155,24 @@ class LayerProfiler:
             if hasattr(obj, part):
                 obj = getattr(obj, part)
             else:
-                logger.error(f"Could not access attribute '{part}' in path {self.component_paths.layers_path}")
+                logger.error(
+                    f"Could not access attribute '{part}' in path {self.component_paths.layers_path}. "
+                    f"Available attributes: {[attr for attr in dir(obj) if not attr.startswith('_')][:10]}"
+                )
                 return None
 
         return obj
+
+    def get_registration_summary(self) -> Dict[str, int]:
+        """
+        Get summary of hook registration statistics.
+
+        Returns:
+            Dict mapping component names to count of registered hooks
+        """
+        if not hasattr(self, '_registration_stats'):
+            return {}
+        return self._registration_stats.copy()
 
     def _register_layer_hooks(self, layer: Any, layer_idx: int) -> None:
         """
@@ -151,13 +182,21 @@ class LayerProfiler:
             layer: The transformer layer module
             layer_idx: Index of the layer (0-based)
         """
+        # Log layer structure for first layer to help with debugging
+        if layer_idx == 0:
+            logger.debug(f"Layer 0 structure: {type(layer).__name__}")
+            if hasattr(layer, 'self_attn'):
+                logger.debug(f"  - self_attn: {type(layer.self_attn).__name__}")
+            if hasattr(layer, 'mlp'):
+                logger.debug(f"  - mlp: {type(layer.mlp).__name__}")
+
         # Register attention hooks
         self._register_component_hook(layer, layer_idx, self.component_paths.q_proj, "q_proj")
         self._register_component_hook(layer, layer_idx, self.component_paths.k_proj, "k_proj")
         self._register_component_hook(layer, layer_idx, self.component_paths.v_proj, "v_proj")
         self._register_component_hook(layer, layer_idx, self.component_paths.o_proj, "o_proj")
 
-        # Register MLP hooks
+        # Register MLP hooks (gate_proj is optional for some architectures)
         if self.component_paths.gate_proj:
             self._register_component_hook(layer, layer_idx, self.component_paths.gate_proj, "gate_proj")
         self._register_component_hook(layer, layer_idx, self.component_paths.up_proj, "up_proj")
@@ -183,6 +222,10 @@ class LayerProfiler:
             component_path: Dot-separated path to component (e.g., "self_attn.q_proj")
             component_name: Human-readable component name for logging
         """
+        # Skip if component_path is None (some architectures don't have all components)
+        if component_path is None:
+            return
+
         # Navigate to component
         parts = component_path.split('.')
         component = layer
@@ -191,9 +234,13 @@ class LayerProfiler:
             if hasattr(component, part):
                 component = getattr(component, part)
             else:
-                logger.warning(
-                    f"Could not find component '{component_path}' in layer {layer_idx}, skipping"
-                )
+                # Only log warning on first layer to avoid spam
+                if layer_idx == 0:
+                    logger.warning(
+                        f"Could not find component '{component_path}' in layer {layer_idx} "
+                        f"(architecture: {self.component_paths.architecture}). "
+                        f"This may indicate an architecture detection issue."
+                    )
                 return
 
         # Create pre-hook to capture start time
@@ -260,6 +307,10 @@ class LayerProfiler:
         # Store handles for later removal
         self.hook_handles.append(pre_handle)
         self.hook_handles.append(post_handle)
+
+        # Update registration statistics
+        if hasattr(self, '_registration_stats') and component_name in self._registration_stats:
+            self._registration_stats[component_name] += 1
 
     def get_timings(self) -> List[ComponentTiming]:
         """

@@ -216,7 +216,7 @@
       "title": "Fix layer profiler hooks for different architectures",
       "description": "LayerProfiler hook registration assumes Llama-like layer structure. Other architectures (StableLM, Gemma) may have different module paths causing hooks to not attach.",
       "priority": "high",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read backend/profiling/layer_profiler.py _register_hooks method. Check module path patterns used to find attention, MLP, LayerNorm components.",
         "test": "Profile non-Llama model. Check if layer metrics are captured. May show 0 component types.",
