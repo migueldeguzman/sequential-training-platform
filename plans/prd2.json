@@ -255,7 +255,7 @@
       "title": "Fix LiveLayerHeatmap not receiving data",
       "description": "LiveLayerHeatmap component shows 'Waiting for token generation' even when tokens are being generated, because layer metrics aren't being sent via WebSocket.",
       "priority": "high",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read src/components/profiling/charts/LiveLayerHeatmap.tsx. It expects latestToken prop with layer_metrics array. Check ProfilingContext tokens - do they have layer_metrics?",
         "test": "Profile and check Layer Activity Heatmap. Shows spinner even when tokens are generated.",

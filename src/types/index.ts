@@ -448,6 +448,7 @@ export interface TokenCompleteMessage extends BaseProfilingMessage {
     total_duration_ms: number;
     total_energy_mj: number;
   };
+  layer_metrics?: LayerMetrics[];  // Full layer-by-layer data for LiveLayerHeatmap
 }
 
 export interface LayerMetricsMessage extends BaseProfilingMessage {

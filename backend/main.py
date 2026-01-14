@@ -1908,7 +1908,8 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                         "energy_mj": token_data.get("energy_mj"),
                         "avg_power_mw": token_data.get("avg_power_mw"),
                         "power_snapshot": token_data.get("power_snapshot"),
-                        "layer_metrics_summary": token_data.get("layer_metrics_summary")
+                        "layer_metrics_summary": token_data.get("layer_metrics_summary"),
+                        "layer_metrics": token_data.get("layer_metrics", [])  # Add full layer-by-layer data
                     }
                 }
                 # Broadcast to all connected WebSocket clients (thread-safe)

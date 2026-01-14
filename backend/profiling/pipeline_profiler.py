@@ -1131,6 +1131,7 @@ class InferencePipelineProfiler:
 
         # Get layer metrics summary for this token
         layer_metrics_summary = None
+        layer_metrics = []  # Full layer-by-layer data for LiveLayerHeatmap
         if session.layer_profiler:
             layer_timings = session.layer_profiler.get_timings()
             if layer_timings:
@@ -1145,7 +1146,7 @@ class InferencePipelineProfiler:
                     "components": {}
                 }
 
-                # Group by component type
+                # Group by component type for summary
                 for timing in layer_timings:
                     comp_name = timing.component_name
                     if comp_name not in layer_metrics_summary["components"]:
@@ -1156,6 +1157,31 @@ class InferencePipelineProfiler:
                     layer_metrics_summary["components"][comp_name]["count"] += 1
                     layer_metrics_summary["components"][comp_name]["total_duration_ms"] += timing.duration_ms
 
+                # Build full layer metrics array grouped by layer
+                # Group timings by layer_idx
+                layers_dict = {}
+                for timing in layer_timings:
+                    layer_idx = timing.layer_idx
+                    if layer_idx not in layers_dict:
+                        layers_dict[layer_idx] = {
+                            "layer_index": layer_idx,
+                            "components": []
+                        }
+
+                    # Add component data
+                    component = {
+                        "component_name": timing.component_name,
+                        "duration_ms": timing.duration_ms,
+                        "activation_mean": timing.activation_mean or 0.0,
+                        "activation_std": timing.activation_std or 0.0,
+                        "activation_max": timing.activation_max or 0.0,
+                        "sparsity": timing.activation_sparsity or 0.0
+                    }
+                    layers_dict[layer_idx]["components"].append(component)
+
+                # Convert to sorted list by layer_index
+                layer_metrics = [layers_dict[idx] for idx in sorted(layers_dict.keys())]
+
         # Build token complete message
         token_data = {
             "token_index": token_index,
@@ -1165,6 +1191,7 @@ class InferencePipelineProfiler:
             "avg_power_mw": avg_power_mw,
             "power_snapshot": power_snapshot,
             "layer_metrics_summary": layer_metrics_summary,
+            "layer_metrics": layer_metrics,  # Add full layer-by-layer data
             "timestamp": time.time()
         }
 

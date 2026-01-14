@@ -155,7 +155,7 @@ export function ProfilingProvider({ children }: { children: React.ReactNode }) {
           duration_ms: message.duration_ms,
           energy_mj: message.energy_mj,
           power_snapshot_mw: message.power_snapshot_mw,
-          layers: [],
+          layers: message.layer_metrics || [],
         };
 
         return {
