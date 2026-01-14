@@ -580,7 +580,7 @@
       "title": "Fix attention mask handling for padded inputs",
       "description": "If input is padded, attention mask should be passed to generation but may not be handled correctly for all model types.",
       "priority": "medium",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read backend/main.py tokenization and generation. Check if attention_mask is passed to model.generate().",
         "test": "Profile with short prompt that gets padded. Model may attend to padding tokens.",
