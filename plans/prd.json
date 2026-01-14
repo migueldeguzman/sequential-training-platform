@@ -1566,7 +1566,7 @@
       "title": "Inference Engine Comparison Support",
       "description": "Support comparing energy across different inference engines/backends",
       "priority": "LOW",
-      "passes": false,
+      "passes": true,
       "reference": "TokenPowerBench: Compares vLLM, TensorRT-LLM, DeepSpeed, Transformers",
       "steps": [
         "Add inference_engine field to profiling_runs table",

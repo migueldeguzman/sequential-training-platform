@@ -81,6 +81,7 @@ class ProfilingSession:
     tags: Optional[str] = None
     electricity_price_per_kwh: float = 0.12
     carbon_intensity_g_per_kwh: float = 400.0
+    inference_engine: Optional[str] = None
 
     # Collected data during the session
     sections: List[SectionTiming] = field(default_factory=list)
@@ -207,7 +208,9 @@ class InferencePipelineProfiler:
         experiment_name: Optional[str] = None,
         tags: Optional[str] = None,
         electricity_price_per_kwh: float = 0.12,
-        carbon_intensity_g_per_kwh: float = 400.0
+        carbon_intensity_g_per_kwh: float = 400.0,
+        inference_engine: Optional[str] = None,
+        model=None
     ):
         """
         Context manager for a profiling run session.
@@ -227,6 +230,8 @@ class InferencePipelineProfiler:
             tags: Optional comma-separated tags
             electricity_price_per_kwh: Cost of electricity in USD per kWh (default: $0.12)
             carbon_intensity_g_per_kwh: Carbon intensity in grams CO2 per kWh (default: 400g for US grid)
+            inference_engine: Optional inference engine name (auto-detected if None)
+            model: Optional model object for engine detection
 
         Yields:
             ProfilingSession object with section() context manager
@@ -242,7 +247,13 @@ class InferencePipelineProfiler:
         run_id = self._generate_run_id()
         start_time = time.time()
 
-        logger.info(f"Starting profiling run {run_id} for model {model_name}")
+        # Auto-detect inference engine if not provided
+        if inference_engine is None:
+            from profiling.engine_detector import detect_inference_engine
+            inference_engine = detect_inference_engine(model)
+            logger.info(f"Auto-detected inference engine: {inference_engine}")
+
+        logger.info(f"Starting profiling run {run_id} for model {model_name} (engine: {inference_engine})")
 
         # Create session object
         session = ProfilingSession(
@@ -255,6 +266,7 @@ class InferencePipelineProfiler:
             tags=tags,
             electricity_price_per_kwh=electricity_price_per_kwh,
             carbon_intensity_g_per_kwh=carbon_intensity_g_per_kwh,
+            inference_engine=inference_engine,
             power_monitor=self.power_monitor,
             layer_profiler=self.layer_profiler,
             deep_profiler=self.deep_profiler,
@@ -443,7 +455,8 @@ class InferencePipelineProfiler:
             tags=session.tags,
             profiling_depth=session.profiling_depth,
             electricity_price_per_kwh=session.electricity_price_per_kwh,
-            carbon_intensity_g_per_kwh=session.carbon_intensity_g_per_kwh
+            carbon_intensity_g_per_kwh=session.carbon_intensity_g_per_kwh,
+            inference_engine=session.inference_engine
         )
 
         # Get peak power metrics

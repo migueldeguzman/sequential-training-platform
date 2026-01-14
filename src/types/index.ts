@@ -234,6 +234,7 @@ export interface ProfilingRun {
   token_count?: number;
   tokens_per_second?: number;
   profiling_depth: string; // module/deep
+  inference_engine?: string; // transformers, mlx, vllm, etc.
   tags?: string[];
   experiment_name?: string;
   baseline_power_mw?: number;
@@ -243,7 +244,6 @@ export interface ProfilingRun {
   peak_power_ane_mw?: number;
   peak_power_dram_mw?: number;
   batch_size?: number;
-  inference_engine?: string;
 
   // Model architectural features
   total_params?: number;
@@ -497,6 +497,7 @@ export interface ProfilingRunsFilter {
   date_to?: string;
   tags?: string[];
   experiment?: string;
+  inference_engine?: string;
   limit?: number;
   offset?: number;
   sort_by?: 'date' | 'duration' | 'energy' | 'efficiency' | 'joules_per_token';

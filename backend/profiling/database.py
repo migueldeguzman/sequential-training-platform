@@ -143,6 +143,7 @@ class ProfileDatabase:
                 num_experts INTEGER,
                 num_active_experts INTEGER,
                 architecture_type TEXT,
+                inference_engine TEXT,
                 status TEXT DEFAULT 'running',
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
@@ -320,6 +321,11 @@ class ProfileDatabase:
             ON profiling_runs(tags)
         """)
 
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_profiling_runs_inference_engine
+            ON profiling_runs(inference_engine)
+        """)
+
         # Migration: Add precision and quantization_method columns if they don't exist
         # Check if columns exist
         cursor.execute("PRAGMA table_info(profiling_runs)")
@@ -332,6 +338,10 @@ class ProfileDatabase:
         if "quantization_method" not in columns:
             cursor.execute("ALTER TABLE profiling_runs ADD COLUMN quantization_method TEXT")
             logger.info("Added quantization_method column to profiling_runs table")
+
+        if "inference_engine" not in columns:
+            cursor.execute("ALTER TABLE profiling_runs ADD COLUMN inference_engine TEXT")
+            logger.info("Added inference_engine column to profiling_runs table")
 
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_tokens_phase_index
@@ -366,6 +376,7 @@ class ProfileDatabase:
         carbon_intensity_g_per_kwh: float = 400.0,
         precision: Optional[str] = None,
         quantization_method: Optional[str] = None,
+        inference_engine: Optional[str] = None,
     ) -> int:
         """Create a new profiling run record.
 
@@ -383,6 +394,7 @@ class ProfileDatabase:
             carbon_intensity_g_per_kwh: Carbon intensity in grams CO2 per kWh (default: 400g for US grid)
             precision: Model precision (FP32, FP16, BF16, FP8, INT8, INT4, MIXED)
             quantization_method: Quantization method (gptq, awq, gguf, bitsandbytes, None)
+            inference_engine: Inference engine/backend used (transformers, mlx, vllm, etc.)
 
         Returns:
             Database row ID of created run
@@ -394,14 +406,14 @@ class ProfileDatabase:
                 run_id, timestamp, model_name, prompt, response,
                 experiment_name, tags, profiling_depth, batch_size,
                 electricity_price_per_kwh, carbon_intensity_g_per_kwh,
-                precision, quantization_method, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running')
+                precision, quantization_method, inference_engine, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running')
             """,
             (run_id, timestamp, model_name, prompt, response, experiment_name, tags, profiling_depth, batch_size,
-             electricity_price_per_kwh, carbon_intensity_g_per_kwh, precision, quantization_method),
+             electricity_price_per_kwh, carbon_intensity_g_per_kwh, precision, quantization_method, inference_engine),
         )
         self.conn.commit()
-        logger.info(f"Created profiling run {run_id} with batch_size={batch_size}, precision={precision}, quantization_method={quantization_method}")
+        logger.info(f"Created profiling run {run_id} with batch_size={batch_size}, precision={precision}, quantization_method={quantization_method}, inference_engine={inference_engine}")
         return cursor.lastrowid
 
     def update_run_metrics(
@@ -964,6 +976,7 @@ class ProfileDatabase:
         date_to: Optional[str] = None,
         tags: Optional[str] = None,
         experiment: Optional[str] = None,
+        inference_engine: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[dict]:
@@ -975,6 +988,7 @@ class ProfileDatabase:
             date_to: Filter runs up to this timestamp (ISO format)
             tags: Filter by comma-separated tags
             experiment: Filter by experiment name
+            inference_engine: Filter by inference engine/backend
             limit: Maximum number of results
             offset: Number of results to skip (for pagination)
 
@@ -1007,6 +1021,10 @@ class ProfileDatabase:
         if experiment:
             query += " AND experiment_name = ?"
             params.append(experiment)
+
+        if inference_engine:
+            query += " AND inference_engine = ?"
+            params.append(inference_engine)
 
         query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])

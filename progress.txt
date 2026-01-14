@@ -3339,3 +3339,19 @@ Notes:
 - Expert utilization chart showing load balance across experts
 - Added getMoEAnalysis to api.ts for frontend integration
 - Based on TokenPowerBench research: MoE uses 2-3× less energy than dense with similar quality
+
+2026-01-14 - EP-095 - COMPLETE - Inference Engine Comparison Support
+- Added inference_engine field to profiling_runs database table with index for filtering
+- Implemented automatic engine detection in backend/profiling/engine_detector.py
+- Detects: transformers, mlx, vllm, llama-cpp, ggml, optimum, exllama, exllamav2, pytorch-native
+- Added get_engine_info() to provide metadata about each engine (name, description, Apple Silicon native status)
+- Added inference_engine parameter to database.create_run() and database.get_runs()
+- Updated ProfilingSession dataclass to include inference_engine field
+- Modified pipeline_profiler.run() to auto-detect engine from model object if not provided
+- Updated GET /api/profiling/runs endpoint to support inference_engine filter parameter
+- Added inference_engine field to ProfilingRun and ProfilingRunsFilter TypeScript interfaces
+- Frontend can now filter profiling runs by inference engine
+- Enables cross-engine comparisons for same models on Apple Silicon
+- Note: On Apple Silicon, options more limited than NVIDIA (no TensorRT-LLM, DeepSpeed)
+- Future work: Add engine efficiency ranking UI component, cross-engine comparison charts
+

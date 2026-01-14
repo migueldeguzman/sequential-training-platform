@@ -1786,7 +1786,8 @@ async def profiled_generate(request: ProfiledGenerateRequest):
             model_name=model_dir.name,
             profiling_depth=request.profilingDepth,
             experiment_name=request.experimentName,
-            tags=request.tags
+            tags=request.tags,
+            model=model
         ) as session:
             # Pre-inference phase
             with session.section("tokenization", phase="pre_inference"):
@@ -1855,6 +1856,7 @@ async def get_profiling_runs(
     date_to: Optional[str] = Query(None, description="Filter runs up to this timestamp (ISO format)"),
     tags: Optional[str] = Query(None, description="Filter by comma-separated tags"),
     experiment: Optional[str] = Query(None, description="Filter by experiment name"),
+    inference_engine: Optional[str] = Query(None, description="Filter by inference engine/backend"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of results"),
     offset: int = Query(0, ge=0, description="Number of results to skip"),
     sort_by: str = Query("joules_per_token", description="Sort by: date, duration, energy, joules_per_token (default)"),
@@ -1868,6 +1870,7 @@ async def get_profiling_runs(
     - date_to: Filter runs up to this timestamp (ISO format)
     - tags: Filter by comma-separated tags
     - experiment: Filter by experiment name
+    - inference_engine: Filter by inference engine/backend (transformers, mlx, vllm, etc.)
     - limit: Maximum number of results (1-1000, default 100)
     - offset: Number of results to skip for pagination (default 0)
     - sort_by: Sort by date, duration, energy, or joules_per_token (default)
@@ -1886,6 +1889,7 @@ async def get_profiling_runs(
             date_to=date_to,
             tags=tags,
             experiment=experiment,
+            inference_engine=inference_engine,
             limit=limit,
             offset=offset,
         )
@@ -1925,6 +1929,7 @@ async def get_profiling_runs(
                     "experiment_name": run.get("experiment_name"),
                     "tags": run.get("tags"),
                     "profiling_depth": run.get("profiling_depth"),
+                    "inference_engine": run.get("inference_engine"),
                     "status": run.get("status"),
                     "total_duration_ms": total_duration_ms,
                     "total_energy_mj": total_energy_mj,
@@ -1949,6 +1954,7 @@ async def get_profiling_runs(
                     "experiment_name": run.get("experiment_name"),
                     "tags": run.get("tags"),
                     "profiling_depth": run.get("profiling_depth"),
+                    "inference_engine": run.get("inference_engine"),
                     "status": run.get("status"),
                     "total_duration_ms": None,
                     "total_energy_mj": None,
