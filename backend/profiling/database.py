@@ -1312,6 +1312,137 @@ class ProfileDatabase:
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
+    def get_database_size_bytes(self) -> int:
+        """Get the size of the database file in bytes.
+
+        Returns:
+            Database file size in bytes
+        """
+        db_file = Path(self.db_path)
+        if db_file.exists():
+            return db_file.stat().st_size
+        return 0
+
+    def get_run_count(self) -> int:
+        """Get the total number of profiling runs.
+
+        Returns:
+            Total number of runs in database
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT COUNT(*) as count FROM profiling_runs")
+        row = cursor.fetchone()
+        return row["count"] if row else 0
+
+    def cleanup_old_runs(self, max_runs: int = 0, max_age_days: int = 0, dry_run: bool = False) -> dict:
+        """Clean up old profiling runs based on retention policies.
+
+        Args:
+            max_runs: Keep only this many most recent runs (0 = unlimited)
+            max_age_days: Delete runs older than this many days (0 = unlimited)
+            dry_run: If True, return what would be deleted without actually deleting
+
+        Returns:
+            Dictionary with cleanup statistics:
+                - runs_to_delete: Number of runs that will be/were deleted
+                - run_ids: List of run_ids that will be/were deleted
+                - db_size_before: Database size before cleanup
+                - db_size_after: Database size after cleanup (None if dry_run)
+        """
+        cursor = self.conn.cursor()
+        runs_to_delete = []
+
+        # Get database size before
+        db_size_before = self.get_database_size_bytes()
+
+        # Find runs to delete based on max_runs limit
+        if max_runs > 0:
+            cursor.execute(
+                """
+                SELECT run_id FROM profiling_runs
+                ORDER BY timestamp DESC
+                LIMIT -1 OFFSET ?
+                """,
+                (max_runs,)
+            )
+            excess_runs = cursor.fetchall()
+            runs_to_delete.extend([row["run_id"] for row in excess_runs])
+
+        # Find runs to delete based on age
+        if max_age_days > 0:
+            from datetime import datetime, timedelta
+            cutoff_date = datetime.now() - timedelta(days=max_age_days)
+            cutoff_timestamp = cutoff_date.isoformat()
+
+            cursor.execute(
+                """
+                SELECT run_id FROM profiling_runs
+                WHERE timestamp < ?
+                """,
+                (cutoff_timestamp,)
+            )
+            old_runs = cursor.fetchall()
+            # Combine with age-based deletion (using set to avoid duplicates)
+            runs_to_delete = list(set(runs_to_delete + [row["run_id"] for row in old_runs]))
+
+        result = {
+            "runs_to_delete": len(runs_to_delete),
+            "run_ids": runs_to_delete,
+            "db_size_before": db_size_before,
+            "db_size_after": None
+        }
+
+        # Perform actual deletion if not dry run
+        if not dry_run and runs_to_delete:
+            for run_id in runs_to_delete:
+                self.delete_run(run_id)
+
+            # Vacuum database to reclaim space
+            cursor.execute("VACUUM")
+            self.conn.commit()
+
+            # Get size after cleanup
+            result["db_size_after"] = self.get_database_size_bytes()
+            result["space_freed_bytes"] = db_size_before - result["db_size_after"]
+
+            logger.info(f"Cleanup completed: deleted {len(runs_to_delete)} runs, freed {result.get('space_freed_bytes', 0)} bytes")
+
+        return result
+
+    def get_retention_stats(self) -> dict:
+        """Get statistics about database retention and storage.
+
+        Returns:
+            Dictionary with retention statistics:
+                - total_runs: Total number of runs
+                - oldest_run_date: Timestamp of oldest run
+                - newest_run_date: Timestamp of newest run
+                - db_size_bytes: Current database size
+                - db_size_mb: Current database size in MB
+        """
+        cursor = self.conn.cursor()
+
+        # Get total run count
+        cursor.execute("SELECT COUNT(*) as count FROM profiling_runs")
+        count_row = cursor.fetchone()
+        total_runs = count_row["count"] if count_row else 0
+
+        # Get oldest and newest run timestamps
+        cursor.execute("SELECT MIN(timestamp) as oldest, MAX(timestamp) as newest FROM profiling_runs")
+        date_row = cursor.fetchone()
+
+        stats = {
+            "total_runs": total_runs,
+            "oldest_run_date": date_row["oldest"] if date_row else None,
+            "newest_run_date": date_row["newest"] if date_row else None,
+            "db_size_bytes": self.get_database_size_bytes(),
+        }
+
+        # Calculate size in MB for convenience
+        stats["db_size_mb"] = stats["db_size_bytes"] / (1024 * 1024)
+
+        return stats
+
 
 def init_database(db_path: str = "backend/profiling.db") -> ProfileDatabase:
     """Initialize and return a connected ProfileDatabase instance.

@@ -38,6 +38,8 @@ class ProfilingConfig:
         power_sample_interval_ms: Power sampling interval in milliseconds (default: 100ms)
         batch_db_commits: Whether to batch database commits (recommended: True)
         preallocate_metrics: Number of metric entries to preallocate (improves list append performance)
+        max_runs_to_keep: Maximum number of profiling runs to retain (0 = unlimited)
+        max_run_age_days: Maximum age of runs to keep in days (0 = unlimited)
     """
 
     capture_activations: bool = True
@@ -46,6 +48,8 @@ class ProfilingConfig:
     batch_db_commits: bool = True
     preallocate_metrics: int = 10000
     sparsity_threshold: float = 1e-4
+    max_runs_to_keep: int = 0
+    max_run_age_days: int = 0
 
     @classmethod
     def minimal(cls) -> "ProfilingConfig":

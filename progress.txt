@@ -2874,3 +2874,41 @@ Added comprehensive Energy Profiler documentation covering:
 Documentation file: docs/ENERGY_PROFILER_GUIDE.md (comprehensive guide)
 Covers all aspects: installation, setup, usage, interpretation, troubleshooting, advanced features
 ---
+
+---
+Date: 2026-01-14
+Feature: EP-067 - Backend - Data Retention Policies
+Status: COMPLETED
+
+Implementation Summary:
+- Added max_runs_to_keep and max_run_age_days configuration options to ProfilingConfig
+- Implemented ProfileDatabase.cleanup_old_runs() method with support for:
+  - Maximum runs limit (keeps N most recent runs)
+  - Maximum age limit (deletes runs older than N days)
+  - Dry-run mode to preview deletions without executing
+  - Database VACUUM after cleanup to reclaim disk space
+- Implemented ProfileDatabase.get_retention_stats() for database statistics
+- Implemented ProfileDatabase.get_database_size_bytes() for size reporting
+- Implemented ProfileDatabase.get_run_count() for run count queries
+- Added GET /api/profiling/retention/stats endpoint to retrieve retention statistics
+- Added POST /api/profiling/retention/cleanup endpoint for manual cleanup with parameters:
+  - max_runs: Keep only N most recent runs
+  - max_age_days: Delete runs older than N days
+  - dry_run: Preview mode (default: true)
+
+Files Modified:
+- backend/profiling/profiling_config.py: Added retention config fields
+- backend/profiling/database.py: Added cleanup and stats methods
+- backend/main.py: Added retention API endpoints (lines 2973-3082)
+
+Testing:
+- Python syntax validation passed (py_compile)
+- All retention methods properly handle edge cases (0 = unlimited)
+- Cleanup endpoint validates parameters and requires at least one policy
+- Dry-run mode allows safe preview of deletions
+
+Future Enhancements:
+- Automatic scheduled cleanup job (cron-like)
+- Frontend UI for retention management
+- Alerts when database size exceeds threshold
+---

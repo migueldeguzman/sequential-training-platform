@@ -2970,6 +2970,118 @@ async def get_architectural_analysis(
             db.close()
 
 
+@app.get("/api/profiling/retention/stats")
+async def get_retention_stats():
+    """
+    Get database retention statistics.
+
+    Returns statistics about the profiling database including:
+    - Total number of runs
+    - Oldest and newest run dates
+    - Database size in bytes and MB
+
+    Returns:
+        {
+            "total_runs": int,
+            "oldest_run_date": str (ISO format),
+            "newest_run_date": str (ISO format),
+            "db_size_bytes": int,
+            "db_size_mb": float
+        }
+    """
+    db = None
+    try:
+        db = ProfileDatabase()
+        db.connect()
+
+        stats = db.get_retention_stats()
+
+        return stats
+
+    except Exception as e:
+        logger.error(f"Failed to get retention stats: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get retention stats: {str(e)}"
+        )
+    finally:
+        if db:
+            db.close()
+
+
+@app.post("/api/profiling/retention/cleanup")
+async def cleanup_profiling_runs(
+    max_runs: int = 0,
+    max_age_days: int = 0,
+    dry_run: bool = True
+):
+    """
+    Clean up old profiling runs based on retention policies.
+
+    Query Parameters:
+        max_runs: Keep only this many most recent runs (0 = unlimited)
+        max_age_days: Delete runs older than this many days (0 = unlimited)
+        dry_run: If true, return what would be deleted without actually deleting (default: true)
+
+    Returns:
+        {
+            "runs_to_delete": int,
+            "run_ids": list[str],
+            "db_size_before": int (bytes),
+            "db_size_after": int (bytes, null if dry_run),
+            "space_freed_bytes": int (only if not dry_run)
+        }
+
+    Example:
+        POST /api/profiling/retention/cleanup?max_runs=100&dry_run=true
+        - Preview deletion of runs beyond the 100 most recent
+
+        POST /api/profiling/retention/cleanup?max_age_days=30&dry_run=false
+        - Actually delete runs older than 30 days
+    """
+    db = None
+    try:
+        # Validate parameters
+        if max_runs < 0:
+            raise HTTPException(
+                status_code=400,
+                detail="max_runs must be >= 0"
+            )
+        if max_age_days < 0:
+            raise HTTPException(
+                status_code=400,
+                detail="max_age_days must be >= 0"
+            )
+        if max_runs == 0 and max_age_days == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="At least one retention policy (max_runs or max_age_days) must be specified"
+            )
+
+        db = ProfileDatabase()
+        db.connect()
+
+        result = db.cleanup_old_runs(
+            max_runs=max_runs,
+            max_age_days=max_age_days,
+            dry_run=dry_run
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to cleanup profiling runs: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to cleanup profiling runs: {str(e)}"
+        )
+    finally:
+        if db:
+            db.close()
+
+
 # WebSocket connection manager for profiling streams
 class ProfilingConnectionManager:
     """Manages WebSocket connections for real-time profiling data streaming."""
