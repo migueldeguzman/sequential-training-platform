@@ -2824,3 +2824,53 @@ Tests: npm run build passed successfully
 
 Reference: Caravaca et al. 2025 "From Prompts to Power" - Layers scale linearly, dimensionality scales quadratically with energy
 ---
+
+
+---
+Date: 2026-01-14
+Feature: EP-068 - Documentation - Setup Guide
+Status: COMPLETE
+Description: Created comprehensive Energy Profiler setup and usage guide
+
+Implementation Details:
+- Created docs/ENERGY_PROFILER_GUIDE.md (comprehensive 500+ line guide)
+- Covers all aspects: system requirements, installation, configuration
+- Detailed powermetrics setup instructions (automated and manual)
+- Frontend interface usage guide for all three views (Real-Time, Analysis, History)
+- Complete metrics reference with descriptions and use cases
+- Interpreting energy data and finding optimization opportunities
+- Troubleshooting guide for common issues
+- Advanced usage: batch profiling, custom analysis, data export
+- Integration with existing README_POWERMETRICS.md
+
+Documentation includes:
+  - System requirements (hardware, software, model requirements)
+  - Step-by-step installation and setup
+  - powermetrics configuration (automated and manual)
+  - Starting the Energy Profiler (quick start and separate terminals)
+  - Detailed frontend interface guide (Real-Time, Analysis, History views)
+  - Comprehensive metrics explanation (power, energy, phase, layer, component, deep operation)
+  - Analysis guide (finding hotspots, optimization strategies)
+  - Interpreting energy data (typical patterns, model comparison, cost/carbon)
+  - Troubleshooting section (powermetrics, model loading, frontend, database issues)
+  - Advanced usage (exporting data, batch profiling, custom scripts, cleanup)
+
+Location: docs/ENERGY_PROFILER_GUIDE.md
+
+---
+2026-01-14 | EP-068 | COMPLETE | Documentation - Setup Guide
+
+Added comprehensive Energy Profiler documentation covering:
+- Complete installation and setup instructions
+- Detailed powermetrics configuration (automated and manual)
+- Step-by-step frontend usage guide (Real-Time, Analysis, History views)
+- Comprehensive metrics reference (power, energy, layer, component, deep operation)
+- Analysis techniques for finding energy hotspots
+- Energy optimization strategies based on research findings
+- Troubleshooting guide for common issues
+- Advanced usage examples (export, batch profiling, custom analysis)
+- Cost and carbon estimation configuration
+
+Documentation file: docs/ENERGY_PROFILER_GUIDE.md (comprehensive guide)
+Covers all aspects: installation, setup, usage, interpretation, troubleshooting, advanced features
+---

@@ -1121,7 +1121,7 @@
       "title": "Documentation - Setup Guide",
       "description": "Document Energy Profiler setup and usage",
       "priority": "MEDIUM",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Document sudoers configuration steps",
         "Document backend startup with profiling enabled",
