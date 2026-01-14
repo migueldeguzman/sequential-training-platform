@@ -86,7 +86,7 @@
       "title": "Add StableLM architecture detection in model_detector.py",
       "description": "model_detector.py doesn't detect StableLM architecture, causing it to be misidentified as Llama-like and using wrong component paths for profiling.",
       "priority": "high",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read backend/profiling/model_detector.py. Check detect_architecture() function. No pattern for StableLM models. They get detected as 'llama' because of similar structure but have different attention module names.",
         "test": "Load StableLM model and call detect_architecture(). Returns 'llama' instead of 'stablelm'.",
