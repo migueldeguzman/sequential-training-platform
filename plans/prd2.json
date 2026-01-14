@@ -8,7 +8,7 @@
       "title": "Fix async event loop error in power sample callback",
       "description": "The power sample callback is called from PowerMonitor's background thread but uses asyncio.create_task() which requires an event loop in the current thread. This causes 'no running event loop' errors.",
       "priority": "critical",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read backend/main.py lines 1860-1880 to find stream_power_sample callback. The callback is registered with profiler.power_monitor._power_sample_callback but executes in PowerMonitor's _sampling_loop thread. asyncio.create_task(manager.broadcast(...)) fails because no event loop runs in that thread.",
         "test": "Run profiling and check server logs for 'Failed to stream power sample: no running event loop' errors. These appear continuously during profiling.",
