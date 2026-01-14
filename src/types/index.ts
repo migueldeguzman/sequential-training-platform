@@ -213,6 +213,7 @@ export interface TokenMetrics {
   duration_ms: number;
   energy_mj: number;
   power_snapshot_mw: number;
+  edp?: number; // Energy-Delay Product (energy_mj × duration_ms)
   layers: LayerMetrics[];
 }
 
@@ -266,6 +267,11 @@ export interface ProfilingRun {
   energy_per_million_params?: number;
   tokens_per_joule?: number;
   energy_delay_product?: number;
+  // Energy-Delay Product (EDP) metrics
+  edp?: number; // Total EDP (total_energy_mj × total_duration_ms)
+  edp_per_token?: number; // EDP normalized by token count
+  prefill_edp?: number; // EDP for prefill phase only
+  decode_edp?: number; // EDP for decode phase only
   cost_usd?: number;
   co2_grams?: number;
 
@@ -322,6 +328,15 @@ export interface ProfilingRunSummary {
     joules_per_token: number; // J per token (standardized TokenPowerBench metric)
     joules_per_input_token: number; // J per input token
     joules_per_output_token: number; // J per output token
+  };
+  // EP-088: Energy-Delay Product metrics
+  edp_metrics?: {
+    edp: number; // Total EDP (total_energy_mj × total_duration_ms)
+    edp_per_token: number; // EDP normalized by token count
+    prefill_edp: number; // Prefill phase EDP (prefill_energy_mj × prefill_duration_ms)
+    decode_edp: number; // Decode phase EDP (decode_energy_mj × decode_duration_ms)
+    prefill_duration_ms: number; // Duration of prefill phase
+    decode_duration_ms: number; // Duration of decode phase
   };
   token_energy_breakdown?: {
     input_energy_mj: number;

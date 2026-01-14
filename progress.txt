@@ -3198,3 +3198,29 @@ Notes:
 - Verified TypeScript compilation with npm run build (SUCCESS)
 - Based on TokenPowerBench research: 2-3× energy spread between batch sizes
 - Enables identification of optimal batch size for energy-throughput tradeoff
+
+
+## 2026-01-14
+### EP-088: Energy-Delay Product Metric - COMPLETED
+- Added EDP fields to profiling_runs table schema:
+  - edp: Total Energy-Delay Product (total_energy_mj × total_duration_ms)
+  - edp_per_token: EDP normalized by token count
+  - prefill_edp: EDP for prefill phase only
+  - decode_edp: EDP for decode phase only
+- Added edp field to tokens table for per-token EDP tracking
+- Updated ProfileDatabase.update_run_metrics() to accept EDP parameters
+- Updated ProfileDatabase.add_token() to calculate and store token-level EDP
+- Updated ProfileDatabase.add_tokens_batch() with automatic EDP calculation
+- Enhanced ProfileDatabase.get_run_summary() to calculate EDP metrics:
+  - Total EDP and EDP per token
+  - Phase-specific prefill and decode EDP
+  - Phase duration extraction from pipeline_sections
+- Added EDP types to frontend TypeScript (src/types/index.ts):
+  - TokenMetrics.edp field
+  - ProfilingRun.edp, edp_per_token, prefill_edp, decode_edp fields
+  - ProfilingRunSummary.edp_metrics object with all EDP calculations
+- EDP provides holistic efficiency metric combining energy and latency
+- Lower EDP = better (optimizes both energy and speed simultaneously)
+- Based on TokenPowerBench: EDP = Energy × Delay is key metric for comparing configurations
+- Verified TypeScript compilation with npm run build (SUCCESS)
+- All EDP calculations automatically performed on database query

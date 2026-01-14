@@ -1447,7 +1447,7 @@
       "title": "Energy-Delay Product Metric",
       "description": "Calculate Energy-Delay Product (EDP) for holistic efficiency assessment",
       "priority": "MEDIUM",
-      "passes": false,
+      "passes": true,
       "reference": "TokenPowerBench: EDP combines energy and latency into single efficiency metric",
       "steps": [
         "Calculate EDP = total_energy_mj × total_duration_ms",

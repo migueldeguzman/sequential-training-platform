@@ -122,6 +122,10 @@ class ProfileDatabase:
                 kv_cache_memory_limit_mb REAL,
                 context_length INTEGER,
                 batch_size INTEGER DEFAULT 1,
+                edp REAL,
+                edp_per_token REAL,
+                prefill_edp REAL,
+                decode_edp REAL,
                 status TEXT DEFAULT 'running',
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
@@ -172,6 +176,7 @@ class ProfileDatabase:
                 duration_ms REAL NOT NULL,
                 energy_mj REAL,
                 avg_power_mw REAL,
+                edp REAL,
                 is_input_token BOOLEAN NOT NULL DEFAULT 0,
                 FOREIGN KEY (run_id) REFERENCES profiling_runs(run_id) ON DELETE CASCADE
             )
@@ -368,6 +373,10 @@ class ProfileDatabase:
         kv_cache_memory_limit_mb: Optional[float] = None,
         context_length: Optional[int] = None,
         batch_size: Optional[int] = None,
+        edp: Optional[float] = None,
+        edp_per_token: Optional[float] = None,
+        prefill_edp: Optional[float] = None,
+        decode_edp: Optional[float] = None,
         status: str = "completed",
     ) -> None:
         """Update run with final metrics.
@@ -402,6 +411,10 @@ class ProfileDatabase:
             kv_cache_memory_limit_mb: KV cache memory limit in megabytes
             context_length: Total context length (input + output tokens)
             batch_size: Batch size used for inference
+            edp: Energy-Delay Product (total_energy_mj × total_duration_ms)
+            edp_per_token: EDP normalized by token count
+            prefill_edp: EDP for prefill phase only
+            decode_edp: EDP for decode phase only
             status: Run status (default: 'completed')
         """
         cursor = self.conn.cursor()
@@ -494,6 +507,18 @@ class ProfileDatabase:
         if batch_size is not None:
             updates.append("batch_size = ?")
             values.append(batch_size)
+        if edp is not None:
+            updates.append("edp = ?")
+            values.append(edp)
+        if edp_per_token is not None:
+            updates.append("edp_per_token = ?")
+            values.append(edp_per_token)
+        if prefill_edp is not None:
+            updates.append("prefill_edp = ?")
+            values.append(prefill_edp)
+        if decode_edp is not None:
+            updates.append("decode_edp = ?")
+            values.append(decode_edp)
 
         updates.append("status = ?")
         values.append(status)
@@ -643,6 +668,7 @@ class ProfileDatabase:
         duration_ms: float,
         energy_mj: Optional[float] = None,
         avg_power_mw: Optional[float] = None,
+        edp: Optional[float] = None,
         is_input_token: bool = False,
     ) -> int:
         """Add a token with its metrics.
@@ -657,20 +683,26 @@ class ProfileDatabase:
             duration_ms: Token generation duration
             energy_mj: Energy consumed
             avg_power_mw: Average power
+            edp: Energy-Delay Product (energy_mj × duration_ms)
             is_input_token: True if this is an input token (prefill), False if output (decode)
 
         Returns:
             Database row ID of created token
         """
         cursor = self.conn.cursor()
+
+        # Calculate EDP if not provided
+        if edp is None and energy_mj is not None and duration_ms is not None:
+            edp = energy_mj * duration_ms
+
         cursor.execute(
             """
             INSERT INTO tokens (
                 run_id, token_index, token_text, phase, start_time_ms,
-                end_time_ms, duration_ms, energy_mj, avg_power_mw, is_input_token
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                end_time_ms, duration_ms, energy_mj, avg_power_mw, edp, is_input_token
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (run_id, token_index, token_text, phase, start_time_ms, end_time_ms, duration_ms, energy_mj, avg_power_mw, is_input_token),
+            (run_id, token_index, token_text, phase, start_time_ms, end_time_ms, duration_ms, energy_mj, avg_power_mw, edp, is_input_token),
         )
         # Defer commit for batch operations
         logger.debug(f"Added token {token_index} for run {run_id}")
@@ -682,7 +714,7 @@ class ProfileDatabase:
         Args:
             run_id: Run identifier
             tokens: List of token dicts with keys:
-                token_index, token_text, phase, start_time_ms, end_time_ms, duration_ms, energy_mj, avg_power_mw, is_input_token
+                token_index, token_text, phase, start_time_ms, end_time_ms, duration_ms, energy_mj, avg_power_mw, edp, is_input_token
 
         Returns:
             List of database row IDs for created tokens
@@ -690,12 +722,20 @@ class ProfileDatabase:
         cursor = self.conn.cursor()
         token_ids = []
         for token in tokens:
+            # Calculate EDP if not provided
+            edp = token.get("edp")
+            if edp is None:
+                energy_mj = token.get("energy_mj")
+                duration_ms = token.get("duration_ms")
+                if energy_mj is not None and duration_ms is not None:
+                    edp = energy_mj * duration_ms
+
             cursor.execute(
                 """
                 INSERT INTO tokens (
                     run_id, token_index, token_text, phase, start_time_ms,
-                    end_time_ms, duration_ms, energy_mj, avg_power_mw, is_input_token
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    end_time_ms, duration_ms, energy_mj, avg_power_mw, edp, is_input_token
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
@@ -707,6 +747,7 @@ class ProfileDatabase:
                     token["duration_ms"],
                     token.get("energy_mj"),
                     token.get("avg_power_mw"),
+                    edp,
                     token.get("is_input_token", False),
                 ),
             )
@@ -1123,6 +1164,62 @@ class ProfileDatabase:
             efficiency_metrics["joules_per_output_token"] = 0
 
         summary["efficiency_metrics"] = efficiency_metrics
+
+        # Calculate Energy-Delay Product (EDP) metrics (EP-088)
+        edp_metrics = {}
+
+        # Total EDP = total_energy_mj × total_duration_ms
+        # Lower EDP is better (optimizes both energy and speed)
+        if summary.get("total_energy_mj") and summary.get("total_duration_ms"):
+            edp_metrics["edp"] = summary["total_energy_mj"] * summary["total_duration_ms"]
+
+            # EDP per token
+            if summary.get("token_count") and summary["token_count"] > 0:
+                edp_metrics["edp_per_token"] = edp_metrics["edp"] / summary["token_count"]
+            else:
+                edp_metrics["edp_per_token"] = 0
+        else:
+            edp_metrics["edp"] = 0
+            edp_metrics["edp_per_token"] = 0
+
+        # Prefill EDP (prefill_energy_mj × prefill_duration_ms)
+        # Need to get prefill duration from pipeline sections
+        cursor.execute(
+            """
+            SELECT SUM(duration_ms) as prefill_duration_ms
+            FROM pipeline_sections
+            WHERE run_id = ? AND phase = 'prefill'
+            """,
+            (run_id,)
+        )
+        prefill_duration_row = cursor.fetchone()
+        if prefill_duration_row and prefill_duration_row["prefill_duration_ms"] and summary.get("prefill_energy_mj"):
+            prefill_duration_ms = prefill_duration_row["prefill_duration_ms"]
+            edp_metrics["prefill_edp"] = summary["prefill_energy_mj"] * prefill_duration_ms
+            edp_metrics["prefill_duration_ms"] = prefill_duration_ms
+        else:
+            edp_metrics["prefill_edp"] = 0
+            edp_metrics["prefill_duration_ms"] = 0
+
+        # Decode EDP (decode_energy_mj × decode_duration_ms)
+        cursor.execute(
+            """
+            SELECT SUM(duration_ms) as decode_duration_ms
+            FROM pipeline_sections
+            WHERE run_id = ? AND phase = 'decode'
+            """,
+            (run_id,)
+        )
+        decode_duration_row = cursor.fetchone()
+        if decode_duration_row and decode_duration_row["decode_duration_ms"] and summary.get("decode_energy_mj"):
+            decode_duration_ms = decode_duration_row["decode_duration_ms"]
+            edp_metrics["decode_edp"] = summary["decode_energy_mj"] * decode_duration_ms
+            edp_metrics["decode_duration_ms"] = decode_duration_ms
+        else:
+            edp_metrics["decode_edp"] = 0
+            edp_metrics["decode_duration_ms"] = 0
+
+        summary["edp_metrics"] = edp_metrics
 
         # Calculate component energy breakdown (EP-090)
         # Get total energy per hardware component from power samples
