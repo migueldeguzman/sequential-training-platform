@@ -5404,6 +5404,14 @@ async def websocket_profiling_endpoint(websocket: WebSocket):
                 data = await websocket.receive_text()
                 message = json.loads(data)
 
+                # Handle ping/pong heartbeat
+                if message.get('type') == 'ping':
+                    await websocket.send_text(json.dumps({
+                        'type': 'pong',
+                        'timestamp': datetime.now().timestamp()
+                    }))
+                    continue
+
                 # Handle client messages (e.g., config updates, start/stop requests)
                 logger.info(f"Received message from client {client_id}: {message.get('type', 'unknown')}")
 

@@ -437,7 +437,7 @@
       "title": "Add WebSocket heartbeat for connection health",
       "description": "No heartbeat/ping mechanism for WebSocket connection. Long-idle connections may silently disconnect without frontend knowing.",
       "priority": "low",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read src/lib/profilingWebsocket.ts. No ping/pong handling. Read backend WebSocket handler.",
         "test": "Leave profiling page open for extended time without activity. WebSocket may disconnect silently.",

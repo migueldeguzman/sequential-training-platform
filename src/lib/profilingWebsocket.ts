@@ -42,6 +42,11 @@ export class ProfilingWebSocketManager {
   private handlers: ProfilingEventHandlers = {};
   private connectionState: ConnectionState = 'disconnected';
   private shouldReconnect = true;
+  private pingInterval: NodeJS.Timeout | null = null;
+  private pongTimeout: NodeJS.Timeout | null = null;
+  private lastPongTime: number = 0;
+  private readonly PING_INTERVAL_MS = 30000; // Send ping every 30 seconds
+  private readonly PONG_TIMEOUT_MS = 60000; // Reconnect if no pong in 60 seconds
 
   constructor(baseUrl?: string) {
     // Use config if no baseUrl provided, which will check environment variables
@@ -107,11 +112,20 @@ export class ProfilingWebSocketManager {
         this.reconnectAttempts = 0;
         this.reconnectDelay = 1000;
         this.setConnectionState('connected');
+        this.startHeartbeat();
       };
 
       this.ws.onmessage = (event) => {
         try {
-          const message: ProfilingMessage = JSON.parse(event.data);
+          const rawMessage = JSON.parse(event.data);
+
+          // Handle pong responses (before type checking)
+          if (rawMessage.type === 'pong') {
+            this.lastPongTime = Date.now();
+            return;
+          }
+
+          const message: ProfilingMessage = rawMessage;
           this.handleMessage(message);
         } catch (error) {
           const err = error instanceof Error ? error : new Error('Failed to parse WebSocket message');
@@ -125,6 +139,7 @@ export class ProfilingWebSocketManager {
       };
 
       this.ws.onclose = () => {
+        this.stopHeartbeat();
         this.setConnectionState('disconnected');
         if (this.shouldReconnect) {
           this.scheduleReconnect();
@@ -176,9 +191,56 @@ export class ProfilingWebSocketManager {
     this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
   }
 
+  // Start heartbeat mechanism
+  private startHeartbeat(): void {
+    // Clear any existing timers
+    this.stopHeartbeat();
+
+    // Initialize last pong time
+    this.lastPongTime = Date.now();
+
+    // Send ping every PING_INTERVAL_MS
+    this.pingInterval = setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        try {
+          // Send ping message
+          this.ws.send(JSON.stringify({ type: 'ping' }));
+
+          // Check if we've received a recent pong
+          const timeSinceLastPong = Date.now() - this.lastPongTime;
+          if (timeSinceLastPong > this.PONG_TIMEOUT_MS) {
+            // No pong received in timeout period, reconnect
+            console.warn('WebSocket heartbeat timeout, reconnecting...');
+            this.disconnect();
+            if (this.shouldReconnect) {
+              this.scheduleReconnect();
+            }
+          }
+        } catch (error) {
+          console.error('Failed to send ping:', error);
+        }
+      }
+    }, this.PING_INTERVAL_MS);
+  }
+
+  // Stop heartbeat mechanism
+  private stopHeartbeat(): void {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
+    if (this.pongTimeout) {
+      clearTimeout(this.pongTimeout);
+      this.pongTimeout = null;
+    }
+  }
+
   // Disconnect from WebSocket
   disconnect(): void {
     this.shouldReconnect = false;
+
+    // Stop heartbeat
+    this.stopHeartbeat();
 
     // Cancel any pending reconnection timer
     if (this.reconnectTimer) {
