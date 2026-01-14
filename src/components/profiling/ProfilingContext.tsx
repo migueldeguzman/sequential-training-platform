@@ -34,6 +34,10 @@ export interface ProfilingState {
   // Current section being profiled
   currentSection: CurrentSection | null;
 
+  // Model loading state
+  isLoadingModel: boolean;
+  modelLoadingMessage: string | null;
+
   // WebSocket connection state
   connectionState: ConnectionState;
   wsError: Error | null;
@@ -66,6 +70,8 @@ const initialState: ProfilingState = {
   tokens: [],
   sections: [],
   currentSection: null,
+  isLoadingModel: false,
+  modelLoadingMessage: null,
   connectionState: 'disconnected',
   wsError: null,
   completedRunId: null,
@@ -163,6 +169,15 @@ export function ProfilingProvider({ children }: { children: React.ReactNode }) {
           tokens: [...prev.tokens, token],
         };
       });
+    });
+
+    // Model loading handler
+    subscribe('model_loading', (message) => {
+      setState((prev) => ({
+        ...prev,
+        isLoadingModel: message.data.status === 'loading',
+        modelLoadingMessage: message.data.message,
+      }));
     });
 
     // Inference complete handler

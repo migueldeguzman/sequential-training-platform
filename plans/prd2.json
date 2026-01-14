@@ -281,7 +281,7 @@
       "title": "Add model loading progress indication",
       "description": "Loading large models takes time but no progress indication is shown. User may think the app is frozen.",
       "priority": "low",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read backend/main.py load_model_if_needed. Model loading can take 10-60 seconds for large models. No progress events sent.",
         "test": "Profile with a model not yet loaded. UI shows no indication during loading time.",

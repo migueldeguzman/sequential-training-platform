@@ -6,7 +6,7 @@ import type { ProfiledGenerateRequest, ModelCheckpoint } from '@/types';
 import { API_BASE_URL } from '@/lib/config';
 
 export function ProfilingControls() {
-  const { isRunning, isProfiling, connectionState, startProfiling, stopProfiling } = useProfilingContext();
+  const { isRunning, isProfiling, connectionState, isLoadingModel, modelLoadingMessage, startProfiling, stopProfiling } = useProfilingContext();
 
   // Available models
   const [availableModels, setAvailableModels] = useState<ModelCheckpoint[]>([]);
@@ -83,6 +83,9 @@ export function ProfilingControls() {
 
   // Determine status text and color
   const getStatusDisplay = () => {
+    if (isLoadingModel && modelLoadingMessage) {
+      return { text: modelLoadingMessage, color: 'text-yellow-600 dark:text-yellow-400' };
+    }
     if (isProfiling) {
       return { text: 'Profiling...', color: 'text-green-600 dark:text-green-400' };
     }

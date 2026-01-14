@@ -10,6 +10,7 @@ import type {
   LayerMetricsMessage,
   ComponentMetricsMessage,
   InferenceCompleteMessage,
+  ModelLoadingMessage,
 } from '@/types';
 
 // WebSocket connection states
@@ -24,6 +25,7 @@ export type ProfilingEventHandlers = {
   layer_metrics?: (message: LayerMetricsMessage) => void;
   component_metrics?: (message: ComponentMetricsMessage) => void;
   inference_complete?: (message: InferenceCompleteMessage) => void;
+  model_loading?: (message: ModelLoadingMessage) => void;
   error?: (error: Error) => void;
   connectionStateChange?: (state: ConnectionState) => void;
 };

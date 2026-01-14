@@ -1819,10 +1819,34 @@ async def profiled_generate(request: ProfiledGenerateRequest):
             ("cuda" if torch.cuda.is_available() else "cpu")
         )
 
+        # Send model loading start event
+        model_name = Path(request.model_path).name
+        await profiling_manager.broadcast({
+            "type": ProfilingMessageType.MODEL_LOADING,
+            "timestamp": time.time() * 1000,
+            "data": {
+                "status": "loading",
+                "model_name": model_name,
+                "model_path": request.model_path,
+                "message": f"Loading tokenizer for {model_name}..."
+            }
+        })
+
         # Load model and tokenizer
         tokenizer = AutoTokenizer.from_pretrained(request.model_path, trust_remote_code=True)
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
+
+        await profiling_manager.broadcast({
+            "type": ProfilingMessageType.MODEL_LOADING,
+            "timestamp": time.time() * 1000,
+            "data": {
+                "status": "loading",
+                "model_name": model_name,
+                "model_path": request.model_path,
+                "message": f"Loading model weights for {model_name}..."
+            }
+        })
 
         dtype = torch.float16 if device.type == "cuda" else torch.float32
         model = AutoModelForCausalLM.from_pretrained(
@@ -1831,7 +1855,30 @@ async def profiled_generate(request: ProfiledGenerateRequest):
             low_cpu_mem_usage=True,
             trust_remote_code=True
         )
+
+        await profiling_manager.broadcast({
+            "type": ProfilingMessageType.MODEL_LOADING,
+            "timestamp": time.time() * 1000,
+            "data": {
+                "status": "loading",
+                "model_name": model_name,
+                "model_path": request.model_path,
+                "message": f"Moving model to {device}..."
+            }
+        })
+
         model.to(device)
+
+        await profiling_manager.broadcast({
+            "type": ProfilingMessageType.MODEL_LOADING,
+            "timestamp": time.time() * 1000,
+            "data": {
+                "status": "complete",
+                "model_name": model_name,
+                "model_path": request.model_path,
+                "message": f"Model {model_name} loaded successfully"
+            }
+        })
 
         # Initialize profilers with graceful fallbacks
         layer_profiler = None
@@ -5141,6 +5188,7 @@ class ProfilingMessageType:
     LAYER_METRICS = "layer_metrics"
     COMPONENT_METRICS = "component_metrics"
     INFERENCE_COMPLETE = "inference_complete"
+    MODEL_LOADING = "model_loading"
     ERROR = "error"
 
 

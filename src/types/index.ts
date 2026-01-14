@@ -411,7 +411,8 @@ export type ProfilingMessageType =
   | 'token_complete'
   | 'layer_metrics'
   | 'component_metrics'
-  | 'inference_complete';
+  | 'inference_complete'
+  | 'model_loading';
 
 export interface BaseProfilingMessage {
   type: ProfilingMessageType;
@@ -486,6 +487,16 @@ export interface InferenceCompleteMessage extends BaseProfilingMessage {
   };
 }
 
+export interface ModelLoadingMessage extends BaseProfilingMessage {
+  type: 'model_loading';
+  data: {
+    status: 'loading' | 'complete' | 'error';
+    model_name: string;
+    model_path: string;
+    message: string;
+  };
+}
+
 export type ProfilingMessage =
   | PowerSampleMessage
   | SectionStartMessage
@@ -493,7 +504,8 @@ export type ProfilingMessage =
   | TokenCompleteMessage
   | LayerMetricsMessage
   | ComponentMetricsMessage
-  | InferenceCompleteMessage;
+  | InferenceCompleteMessage
+  | ModelLoadingMessage;
 
 // Profiling API request types
 
