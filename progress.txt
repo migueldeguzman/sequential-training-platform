@@ -3371,3 +3371,18 @@ Notes:
 - All instrumented forwards now pass through arguments transparently to original implementations
 - Gemma 3 models can now be profiled with both 'module' and 'deep' profiling depths
 
+
+
+### EP-100: Database Connection Management - COMPLETED
+- Fixed 'NoneType' object has no attribute 'cursor' database errors
+- Added _ensure_connected() method to auto-establish connection before operations
+- Modified connect() to skip if already connected (idempotent)
+- Added _ensure_connected() calls to all critical database methods:
+  - create_run()
+  - update_run_metrics()
+  - get_run()
+  - get_runs()
+  - get_run_summary()
+- Verified database operations work without explicit connect() calls
+- Tested with Python syntax validation and integration test
+- All database operations now handle connection management gracefully

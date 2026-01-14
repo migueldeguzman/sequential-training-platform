@@ -35,6 +35,10 @@ class ProfileDatabase:
             PermissionError: If insufficient permissions to write to database location
             Exception: For other database initialization errors
         """
+        # Skip if already connected
+        if self.conn is not None:
+            return
+
         try:
             # Ensure parent directory exists
             db_file = Path(self.db_path)
@@ -70,6 +74,22 @@ class ProfileDatabase:
         except Exception as e:
             logger.error(f"Database connection failed: {str(e)}")
             raise
+
+    def _ensure_connected(self):
+        """Ensure database connection is established before operations.
+
+        Raises:
+            RuntimeError: If unable to establish connection
+        """
+        if self.conn is None:
+            try:
+                self.connect()
+            except Exception as e:
+                logger.error(f"Failed to auto-connect to database: {str(e)}")
+                raise RuntimeError(
+                    f"Database connection not established. Call connect() first or check database permissions. "
+                    f"Error: {str(e)}"
+                )
 
     def close(self):
         """Close database connection."""
@@ -399,6 +419,7 @@ class ProfileDatabase:
         Returns:
             Database row ID of created run
         """
+        self._ensure_connected()
         cursor = self.conn.cursor()
         cursor.execute(
             """
@@ -495,6 +516,7 @@ class ProfileDatabase:
             co2_grams: Estimated CO2 emissions in grams
             status: Run status (default: 'completed')
         """
+        self._ensure_connected()
         cursor = self.conn.cursor()
 
         # Build dynamic UPDATE statement based on provided values
@@ -960,6 +982,7 @@ class ProfileDatabase:
         Returns:
             Dictionary with full run data or None if not found
         """
+        self._ensure_connected()
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM profiling_runs WHERE run_id = ?", (run_id,))
         row = cursor.fetchone()
@@ -995,6 +1018,7 @@ class ProfileDatabase:
         Returns:
             List of run dictionaries
         """
+        self._ensure_connected()
         cursor = self.conn.cursor()
 
         # Build dynamic query with filters
@@ -1043,6 +1067,7 @@ class ProfileDatabase:
         Returns:
             Dictionary with summary statistics or None if not found
         """
+        self._ensure_connected()
         cursor = self.conn.cursor()
 
         # Get basic run info
