@@ -450,7 +450,7 @@
       "title": "Fix memory leak in power sample accumulation",
       "description": "PowerMonitor accumulates samples in _samples list indefinitely. For long profiling runs, this can cause memory issues.",
       "priority": "low",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read backend/profiling/power_monitor.py _sampling_loop. Samples appended to _samples list. No limit or pruning.",
         "test": "Run profiling for 10+ minutes. Monitor memory usage of backend process.",

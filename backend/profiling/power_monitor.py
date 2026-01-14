@@ -55,14 +55,17 @@ class PowerMonitor:
         samples = monitor.get_samples()
     """
 
-    def __init__(self, sample_interval_ms: int = 100):
+    def __init__(self, sample_interval_ms: int = 100, max_samples: int = 10000):
         """
         Initialize PowerMonitor.
 
         Args:
             sample_interval_ms: Sampling interval in milliseconds (default: 100ms)
+            max_samples: Maximum number of samples to keep in memory (default: 10000)
+                        When limit is reached, oldest samples are removed
         """
         self.sample_interval_ms = sample_interval_ms
+        self.max_samples = max_samples
         self._process: Optional[subprocess.Popen] = None
         self._samples: List[PowerSample] = []
         self._samples_lock = threading.Lock()  # Thread-safe access to samples
@@ -85,6 +88,9 @@ class PowerMonitor:
         self._last_sample_rate_check: Optional[float] = None
         self._sample_rate_check_interval: float = 5.0  # Check sample rate every 5 seconds
         self._sample_count_at_last_check: int = 0
+
+        # Track if we've hit the sample limit
+        self._sample_limit_warned: bool = False
 
     def _check_sample_rate(self) -> None:
         """
@@ -254,6 +260,19 @@ class PowerMonitor:
                             if sample:
                                 with self._samples_lock:
                                     self._samples.append(sample)
+
+                                    # Check if we've exceeded max_samples limit
+                                    if len(self._samples) >= self.max_samples:
+                                        # Warn once when limit is approached (at 90%)
+                                        if not self._sample_limit_warned and len(self._samples) >= self.max_samples * 0.9:
+                                            print(f"Warning: Sample limit approaching ({len(self._samples)}/{self.max_samples}). "
+                                                  f"Oldest samples will be removed to prevent memory issues.")
+                                            self._sample_limit_warned = True
+
+                                        # Remove oldest 10% of samples when limit is reached
+                                        samples_to_remove = max(1, int(self.max_samples * 0.1))
+                                        self._samples = self._samples[samples_to_remove:]
+
                                     # Call power sample callback if set
                                     if hasattr(self, '_power_sample_callback') and self._power_sample_callback:
                                         try:
@@ -580,14 +599,17 @@ class NvidiaPowerMonitor:
         samples = monitor.get_samples()
     """
 
-    def __init__(self, sample_interval_ms: int = 100):
+    def __init__(self, sample_interval_ms: int = 100, max_samples: int = 10000):
         """
         Initialize NvidiaPowerMonitor.
 
         Args:
             sample_interval_ms: Sampling interval in milliseconds (default: 100ms)
+            max_samples: Maximum number of samples to keep in memory (default: 10000)
+                        When limit is reached, oldest samples are removed
         """
         self.sample_interval_ms = sample_interval_ms
+        self.max_samples = max_samples
         self._samples: List[PowerSample] = []
         self._samples_lock = threading.Lock()
         self._start_time: Optional[float] = None
@@ -607,6 +629,9 @@ class NvidiaPowerMonitor:
         self._last_sample_rate_check: Optional[float] = None
         self._sample_rate_check_interval: float = 5.0  # Check sample rate every 5 seconds
         self._sample_count_at_last_check: int = 0
+
+        # Track if we've hit the sample limit
+        self._sample_limit_warned: bool = False
 
     def _check_sample_rate(self) -> None:
         """
@@ -714,6 +739,19 @@ class NvidiaPowerMonitor:
 
                     with self._samples_lock:
                         self._samples.append(sample)
+
+                        # Check if we've exceeded max_samples limit
+                        if len(self._samples) >= self.max_samples:
+                            # Warn once when limit is approached (at 90%)
+                            if not self._sample_limit_warned and len(self._samples) >= self.max_samples * 0.9:
+                                print(f"Warning: Sample limit approaching ({len(self._samples)}/{self.max_samples}). "
+                                      f"Oldest samples will be removed to prevent memory issues.")
+                                self._sample_limit_warned = True
+
+                            # Remove oldest 10% of samples when limit is reached
+                            samples_to_remove = max(1, int(self.max_samples * 0.1))
+                            self._samples = self._samples[samples_to_remove:]
+
                         # Call power sample callback if set
                         if hasattr(self, '_power_sample_callback') and self._power_sample_callback:
                             try:
@@ -914,12 +952,13 @@ class NvidiaPowerMonitor:
         return False
 
 
-def create_power_monitor(sample_interval_ms: int = 100):
+def create_power_monitor(sample_interval_ms: int = 100, max_samples: int = 10000):
     """
     Factory function to create appropriate power monitor for the current platform.
 
     Args:
         sample_interval_ms: Sampling interval in milliseconds (default: 100ms)
+        max_samples: Maximum number of samples to keep in memory (default: 10000)
 
     Returns:
         PowerMonitor for macOS systems or NvidiaPowerMonitor for NVIDIA GPU systems
@@ -931,11 +970,11 @@ def create_power_monitor(sample_interval_ms: int = 100):
 
     # Try macOS powermetrics first (for Apple Silicon)
     if system == 'Darwin' and PowerMonitor.is_available():
-        return PowerMonitor(sample_interval_ms=sample_interval_ms)
+        return PowerMonitor(sample_interval_ms=sample_interval_ms, max_samples=max_samples)
 
     # Try NVIDIA GPU monitoring (for systems with NVIDIA GPUs)
     if NvidiaPowerMonitor.is_available():
-        return NvidiaPowerMonitor(sample_interval_ms=sample_interval_ms)
+        return NvidiaPowerMonitor(sample_interval_ms=sample_interval_ms, max_samples=max_samples)
 
     # No power monitoring available
     raise RuntimeError(
