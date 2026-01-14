@@ -34,7 +34,7 @@
       "title": "Fix section event callbacks async issue",
       "description": "All callbacks registered in profiled_generate endpoint (on_section_start, on_section_end, on_token_start, on_token_complete) have the same async event loop issue as the power sample callback.",
       "priority": "critical",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read backend/main.py lines 1874-1975. All callback functions use asyncio.create_task() but they may be called from different threads during profiling.",
         "test": "Check server logs during profiling for any 'no running event loop' errors from section callbacks.",
