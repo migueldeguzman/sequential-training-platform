@@ -242,7 +242,7 @@
       "title": "Add prefill vs decode phase energy tracking",
       "description": "Energy should be tracked separately for prefill (processing input tokens) and decode (generating output tokens) phases for detailed analysis.",
       "priority": "medium",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read backend/main.py profiled_generate. Check if prefill and decode phases are tracked separately. Power monitor has set_phase() method.",
         "test": "Profile and check run summary. prefill_energy_mj and decode_energy_mj may be 0 or not set.",

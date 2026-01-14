@@ -2050,6 +2050,14 @@ def _session_section(self, section_name: str, phase: str):
 
         logger.debug(f"Starting section {phase}/{section_name}")
 
+        # Set phase in power monitor so samples are tagged correctly
+        if self.power_monitor:
+            try:
+                self.power_monitor.set_phase(phase)
+                logger.debug(f"Set power monitor phase to: {phase}")
+            except Exception as e:
+                logger.warning(f"Failed to set power monitor phase: {e}")
+
         # Emit section_start event via callback
         if self.section_event_callback:
             try:
