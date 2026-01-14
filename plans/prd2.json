@@ -346,7 +346,7 @@
       "title": "Fix plist buffer parsing edge cases",
       "description": "PowerMonitor plist parsing may fail on edge cases where plist output is split across buffer boundaries or contains unexpected XML.",
       "priority": "medium",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read backend/profiling/power_monitor.py _sampling_loop. Plist buffering uses string contains checks which may miss split tags.",
         "test": "Run profiling for extended time. May see occasional 'Failed to parse plist' warnings.",

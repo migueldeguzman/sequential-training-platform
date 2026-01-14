@@ -69,6 +69,7 @@ class PowerMonitor:
         self._running = False
         self._sampling_thread: Optional[threading.Thread] = None
         self._plist_buffer = ""
+        self._plist_buffer_start_time: Optional[float] = None  # Track buffer age for timeout
         self._current_phase: str = 'idle'  # Current inference phase
 
         # Peak power tracking
@@ -166,45 +167,77 @@ class PowerMonitor:
 
         try:
             in_plist = False
+            plist_buffer_timeout = 10.0  # Maximum time to buffer incomplete plist (seconds)
+
             # Read powermetrics output line by line
             for line in self._process.stdout:
                 if not self._running:
                     break
 
-                # Start buffering when we see XML declaration or plist start
-                if '<?xml' in line or '<plist' in line:
-                    self._plist_buffer = line
-                    in_plist = True
-                elif in_plist:
+                # Check for buffer timeout - if we've been buffering too long, reset
+                if in_plist and self._plist_buffer_start_time:
+                    buffer_age = time.time() - self._plist_buffer_start_time
+                    if buffer_age > plist_buffer_timeout:
+                        print(f"Warning: Plist buffer timeout ({buffer_age:.1f}s), discarding incomplete sample")
+                        self._plist_buffer = ""
+                        self._plist_buffer_start_time = None
+                        in_plist = False
+
+                # Detect start of plist more robustly
+                # Look for XML declaration or plist tag, handling split tags
+                line_stripped = line.strip()
+                if not in_plist:
+                    # Start buffering if we see XML declaration or plist start tag
+                    if '<?xml' in line or '<plist' in line:
+                        self._plist_buffer = line
+                        self._plist_buffer_start_time = time.time()
+                        in_plist = True
+                else:
+                    # Continue buffering
                     self._plist_buffer += line
 
-                # Check if we have a complete plist (ends with </plist>)
-                if '</plist>' in line and in_plist:
-                    try:
-                        # Parse the complete plist
-                        plist_data = plistlib.loads(self._plist_buffer.encode('utf-8'))
+                # Check if we have a complete plist
+                # More robust check: ensure buffer has both start and end tags
+                if in_plist and '</plist>' in line:
+                    # Verify buffer has proper XML structure before parsing
+                    buffer_lower = self._plist_buffer.lower()
+                    has_xml_or_plist_start = '<?xml' in buffer_lower or '<plist' in buffer_lower
 
-                        # Extract power sample
-                        sample = self._parse_plist_sample(plist_data)
-                        if sample:
-                            with self._samples_lock:
-                                self._samples.append(sample)
-                                # Call power sample callback if set
-                                if hasattr(self, '_power_sample_callback') and self._power_sample_callback:
-                                    try:
-                                        self._power_sample_callback(sample)
-                                    except Exception as cb_e:
-                                        print(f"Warning: Power sample callback failed: {cb_e}")
+                    if has_xml_or_plist_start:
+                        try:
+                            # Parse the complete plist
+                            plist_data = plistlib.loads(self._plist_buffer.encode('utf-8'))
 
-                    except plistlib.InvalidFileException:
-                        # Invalid plist format - skip this sample
-                        pass
-                    except Exception as e:
-                        print(f"Warning: Failed to parse plist: {e}")
-                    finally:
-                        # Reset buffer for next sample
+                            # Extract power sample
+                            sample = self._parse_plist_sample(plist_data)
+                            if sample:
+                                with self._samples_lock:
+                                    self._samples.append(sample)
+                                    # Call power sample callback if set
+                                    if hasattr(self, '_power_sample_callback') and self._power_sample_callback:
+                                        try:
+                                            self._power_sample_callback(sample)
+                                        except Exception as cb_e:
+                                            print(f"Warning: Power sample callback failed: {cb_e}")
+
+                        except plistlib.InvalidFileException as e:
+                            # Invalid plist format - log and skip this sample
+                            print(f"Warning: Failed to parse plist (invalid format): {e}")
+                        except Exception as e:
+                            # Other parsing errors - log and skip
+                            print(f"Warning: Failed to parse plist: {e}")
+                        finally:
+                            # Reset buffer for next sample
+                            self._plist_buffer = ""
+                            self._plist_buffer_start_time = None
+                            in_plist = False
+                    else:
+                        # Malformed buffer without proper start tag, reset
+                        print(f"Warning: Malformed plist buffer (missing start tag), discarding")
                         self._plist_buffer = ""
+                        self._plist_buffer_start_time = None
                         in_plist = False
+
         except Exception as e:
             print(f"Error in sampling loop: {e}")
 
@@ -287,6 +320,7 @@ class PowerMonitor:
         self._running = True
         self._samples = []
         self._plist_buffer = ""
+        self._plist_buffer_start_time = None
 
         # Reset peak power tracking
         self._peak_total_power_mw = 0.0
