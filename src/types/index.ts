@@ -553,3 +553,59 @@ export interface EnergyScalingAnalysis {
     message?: string;
   };
 }
+
+// EP-096: Throughput vs Energy Tradeoff Analysis types
+
+export interface ThroughputEnergyDataPoint {
+  run_id: string;
+  model_name: string;
+  throughput_tokens_per_second: number;
+  energy_per_token_mj: number;
+  tokens_per_joule: number;
+  total_energy_mj: number;
+  total_tokens: number;
+  duration_ms: number;
+  batch_size: number | null;
+  is_pareto_optimal: boolean;
+}
+
+export interface ParetoFrontierPoint {
+  run_id: string;
+  throughput_tokens_per_second: number;
+  energy_per_token_mj: number;
+  tokens_per_joule: number;
+}
+
+export interface KneePoint {
+  run_id: string;
+  throughput_tokens_per_second: number;
+  energy_per_token_mj: number;
+  tokens_per_joule: number;
+  interpretation: string;
+}
+
+export interface ThroughputEnergyStatistics {
+  total_runs: number;
+  unique_models: number;
+  throughput_range: [number, number];
+  energy_per_token_range: [number, number];
+  best_throughput: {
+    run_id: string;
+    model_name: string;
+    throughput_tokens_per_second: number;
+    energy_per_token_mj: number;
+  } | null;
+  best_efficiency: {
+    run_id: string;
+    model_name: string;
+    throughput_tokens_per_second: number;
+    tokens_per_joule: number;
+  } | null;
+}
+
+export interface ThroughputEnergyTradeoff {
+  data_points: ThroughputEnergyDataPoint[];
+  pareto_frontier: ParetoFrontierPoint[];
+  knee_point: KneePoint | null;
+  statistics: ThroughputEnergyStatistics;
+}

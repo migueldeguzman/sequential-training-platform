@@ -3938,6 +3938,276 @@ def get_energy_scaling_analysis(
             db.close()
 
 
+@app.get("/api/profiling/throughput-energy-tradeoff")
+async def get_throughput_energy_tradeoff(
+    model_name: Optional[str] = None,
+    min_throughput: Optional[float] = None,
+    max_throughput: Optional[float] = None,
+    min_energy_per_token: Optional[float] = None,
+    max_energy_per_token: Optional[float] = None
+):
+    """
+    Analyze the relationship between throughput (tokens/s) and energy efficiency.
+
+    Based on TokenPowerBench research: Shows batching improves both throughput and
+    efficiency up to a point. This endpoint helps identify Pareto-optimal configurations
+    and the knee of the curve (best tradeoff point).
+
+    Args:
+        model_name: Optional filter by model name
+        min_throughput: Optional minimum throughput (tokens/s)
+        max_throughput: Optional maximum throughput (tokens/s)
+        min_energy_per_token: Optional minimum energy per token (mJ)
+        max_energy_per_token: Optional maximum energy per token (mJ)
+
+    Returns:
+        {
+            "data_points": [
+                {
+                    "run_id": str,
+                    "model_name": str,
+                    "throughput_tokens_per_second": float,
+                    "energy_per_token_mj": float,
+                    "tokens_per_joule": float,
+                    "total_energy_mj": float,
+                    "total_tokens": int,
+                    "duration_ms": float,
+                    "batch_size": int | None,
+                    "is_pareto_optimal": bool
+                }
+            ],
+            "pareto_frontier": [
+                {
+                    "run_id": str,
+                    "throughput_tokens_per_second": float,
+                    "energy_per_token_mj": float,
+                    "tokens_per_joule": float
+                }
+            ],
+            "knee_point": {
+                "run_id": str,
+                "throughput_tokens_per_second": float,
+                "energy_per_token_mj": float,
+                "tokens_per_joule": float,
+                "interpretation": str
+            } | None,
+            "statistics": {
+                "total_runs": int,
+                "unique_models": int,
+                "throughput_range": [float, float],
+                "energy_per_token_range": [float, float],
+                "best_throughput": {...},
+                "best_efficiency": {...}
+            }
+        }
+
+    Example usage:
+        GET /api/profiling/throughput-energy-tradeoff
+        GET /api/profiling/throughput-energy-tradeoff?model_name=llama-7b
+        GET /api/profiling/throughput-energy-tradeoff?min_throughput=10&max_throughput=100
+    """
+    db = None
+    try:
+        db = ProfileDatabase()
+        db.connect()
+
+        # Query runs with throughput and energy data
+        cursor = db.conn.cursor()
+
+        query = """
+            SELECT
+                run_id,
+                model_name,
+                tokens_per_second,
+                total_energy_mj,
+                token_count,
+                total_duration_ms,
+                batch_size
+            FROM profiling_runs
+            WHERE
+                tokens_per_second IS NOT NULL
+                AND total_energy_mj IS NOT NULL
+                AND token_count IS NOT NULL
+                AND token_count > 0
+                AND total_energy_mj > 0
+        """
+
+        params = []
+
+        if model_name:
+            query += " AND model_name LIKE ?"
+            params.append(f"%{model_name}%")
+
+        query += " ORDER BY tokens_per_second"
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        if not rows:
+            return {
+                "data_points": [],
+                "pareto_frontier": [],
+                "knee_point": None,
+                "statistics": {
+                    "total_runs": 0,
+                    "unique_models": 0,
+                    "throughput_range": [0, 0],
+                    "energy_per_token_range": [0, 0],
+                    "best_throughput": None,
+                    "best_efficiency": None
+                }
+            }
+
+        # Process data points
+        data_points = []
+        for row in rows:
+            throughput = row["tokens_per_second"]
+            energy_per_token = row["total_energy_mj"] / row["token_count"]
+            tokens_per_joule = 1000.0 / energy_per_token if energy_per_token > 0 else 0
+
+            # Apply filters
+            if min_throughput and throughput < min_throughput:
+                continue
+            if max_throughput and throughput > max_throughput:
+                continue
+            if min_energy_per_token and energy_per_token < min_energy_per_token:
+                continue
+            if max_energy_per_token and energy_per_token > max_energy_per_token:
+                continue
+
+            data_points.append({
+                "run_id": row["run_id"],
+                "model_name": row["model_name"],
+                "throughput_tokens_per_second": round(throughput, 2),
+                "energy_per_token_mj": round(energy_per_token, 4),
+                "tokens_per_joule": round(tokens_per_joule, 2),
+                "total_energy_mj": round(row["total_energy_mj"], 4),
+                "total_tokens": row["token_count"],
+                "duration_ms": round(row["total_duration_ms"], 2),
+                "batch_size": row["batch_size"],
+                "is_pareto_optimal": False  # Will be updated below
+            })
+
+        if not data_points:
+            return {
+                "data_points": [],
+                "pareto_frontier": [],
+                "knee_point": None,
+                "statistics": {
+                    "total_runs": 0,
+                    "unique_models": 0,
+                    "throughput_range": [0, 0],
+                    "energy_per_token_range": [0, 0],
+                    "best_throughput": None,
+                    "best_efficiency": None
+                }
+            }
+
+        # Calculate Pareto frontier
+        # A point is Pareto optimal if no other point has both higher throughput AND higher efficiency
+        pareto_frontier = []
+        for i, point in enumerate(data_points):
+            is_dominated = False
+            for other in data_points:
+                if (other["throughput_tokens_per_second"] > point["throughput_tokens_per_second"] and
+                    other["tokens_per_joule"] > point["tokens_per_joule"]):
+                    is_dominated = True
+                    break
+
+            if not is_dominated:
+                data_points[i]["is_pareto_optimal"] = True
+                pareto_frontier.append({
+                    "run_id": point["run_id"],
+                    "throughput_tokens_per_second": point["throughput_tokens_per_second"],
+                    "energy_per_token_mj": point["energy_per_token_mj"],
+                    "tokens_per_joule": point["tokens_per_joule"]
+                })
+
+        # Sort pareto frontier by throughput for display
+        pareto_frontier.sort(key=lambda x: x["throughput_tokens_per_second"])
+
+        # Find knee point (using distance from origin method)
+        knee_point = None
+        if len(pareto_frontier) >= 3:
+            # Normalize values to 0-1 range for fair comparison
+            throughputs = [p["throughput_tokens_per_second"] for p in pareto_frontier]
+            efficiencies = [p["tokens_per_joule"] for p in pareto_frontier]
+
+            min_throughput_val = min(throughputs)
+            max_throughput_val = max(throughputs)
+            min_efficiency_val = min(efficiencies)
+            max_efficiency_val = max(efficiencies)
+
+            if max_throughput_val > min_throughput_val and max_efficiency_val > min_efficiency_val:
+                max_distance = 0
+                knee_idx = 0
+
+                for i, point in enumerate(pareto_frontier):
+                    # Normalize to 0-1
+                    norm_throughput = (point["throughput_tokens_per_second"] - min_throughput_val) / (max_throughput_val - min_throughput_val)
+                    norm_efficiency = (point["tokens_per_joule"] - min_efficiency_val) / (max_efficiency_val - min_efficiency_val)
+
+                    # Distance from origin (0,0) - knee is the point farthest from origin
+                    distance = math.sqrt(norm_throughput ** 2 + norm_efficiency ** 2)
+
+                    if distance > max_distance:
+                        max_distance = distance
+                        knee_idx = i
+
+                knee = pareto_frontier[knee_idx]
+                knee_point = {
+                    "run_id": knee["run_id"],
+                    "throughput_tokens_per_second": knee["throughput_tokens_per_second"],
+                    "energy_per_token_mj": knee["energy_per_token_mj"],
+                    "tokens_per_joule": knee["tokens_per_joule"],
+                    "interpretation": f"Best tradeoff point: {round(knee['throughput_tokens_per_second'], 1)} tokens/s with {round(knee['tokens_per_joule'], 1)} tokens/joule efficiency"
+                }
+
+        # Calculate statistics
+        unique_models = set(d["model_name"] for d in data_points)
+        throughput_values = [d["throughput_tokens_per_second"] for d in data_points]
+        energy_per_token_values = [d["energy_per_token_mj"] for d in data_points]
+
+        best_throughput_point = max(data_points, key=lambda x: x["throughput_tokens_per_second"])
+        best_efficiency_point = max(data_points, key=lambda x: x["tokens_per_joule"])
+
+        statistics = {
+            "total_runs": len(data_points),
+            "unique_models": len(unique_models),
+            "throughput_range": [round(min(throughput_values), 2), round(max(throughput_values), 2)],
+            "energy_per_token_range": [round(min(energy_per_token_values), 4), round(max(energy_per_token_values), 4)],
+            "best_throughput": {
+                "run_id": best_throughput_point["run_id"],
+                "model_name": best_throughput_point["model_name"],
+                "throughput_tokens_per_second": best_throughput_point["throughput_tokens_per_second"],
+                "energy_per_token_mj": best_throughput_point["energy_per_token_mj"]
+            },
+            "best_efficiency": {
+                "run_id": best_efficiency_point["run_id"],
+                "model_name": best_efficiency_point["model_name"],
+                "throughput_tokens_per_second": best_efficiency_point["throughput_tokens_per_second"],
+                "tokens_per_joule": best_efficiency_point["tokens_per_joule"]
+            }
+        }
+
+        return {
+            "data_points": data_points,
+            "pareto_frontier": pareto_frontier,
+            "knee_point": knee_point,
+            "statistics": statistics
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get throughput-energy tradeoff analysis: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get throughput-energy tradeoff analysis: {str(e)}"
+        )
+    finally:
+        if db:
+            db.close()
+
+
 # WebSocket connection manager for profiling streams
 class ProfilingConnectionManager:
     """Manages WebSocket connections for real-time profiling data streaming."""

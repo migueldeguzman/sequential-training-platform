@@ -3286,3 +3286,26 @@ Notes:
 - Updated useEffect dependencies to include sections array
 - Based on TokenPowerBench Figure 1: Shows clear phase boundaries on power timeline
 - Verified TypeScript compilation with npm run build (SUCCESS)
+
+
+2026-01-14 | EP-096 | COMPLETED | Throughput vs Energy Tradeoff Analysis
+- Implemented backend endpoint GET /api/profiling/throughput-energy-tradeoff
+- Accepts query parameters: model_name, min_throughput, max_throughput, min_energy_per_token, max_energy_per_token
+- Calculates throughput (tokens/second) and energy efficiency (tokens/joule) for each run
+- Identifies Pareto-optimal configurations (points where no other config has both higher throughput AND higher efficiency)
+- Calculates knee point using distance-from-origin method on normalized coordinates (best tradeoff point)
+- Returns data_points, pareto_frontier, knee_point, and statistics
+- Statistics include best_throughput and best_efficiency configurations
+- Created ThroughputEnergyTradeoffChart component with Canvas-based scatter plot
+- X-axis: Throughput (tokens/second), Y-axis: Energy per token (mJ)
+- Color-codes points by efficiency (green=high tokens/joule, red=low tokens/joule)
+- Highlights Pareto-optimal points with blue border
+- Draws Pareto frontier line as dashed blue line connecting optimal points
+- Marks knee point with gold star marker and label
+- Interactive hover tooltips show model name, run ID, throughput, energy, efficiency, batch size
+- Legend shows Pareto optimal indicator, knee point marker, and efficiency color scale
+- Interpretation panel displays analysis summary, best throughput, best efficiency, and knee point recommendation
+- Added TypeScript types: ThroughputEnergyDataPoint, ParetoFrontierPoint, KneePoint, ThroughputEnergyStatistics, ThroughputEnergyTradeoff
+- Based on TokenPowerBench finding: Batching improves both throughput and efficiency up to a point
+- Helps identify optimal configurations for balancing speed and energy consumption
+- Verified TypeScript compilation with npm run build (SUCCESS)

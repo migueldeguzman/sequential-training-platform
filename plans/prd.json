@@ -1582,7 +1582,7 @@
       "title": "Throughput vs Energy Tradeoff Analysis",
       "description": "Analyze the relationship between throughput (tokens/s) and energy efficiency",
       "priority": "MEDIUM",
-      "passes": false,
+      "passes": true,
       "reference": "TokenPowerBench: Shows batching improves both throughput and efficiency up to a point",
       "steps": [
         "Calculate tokens_per_second for each run",
