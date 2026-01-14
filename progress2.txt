@@ -21,3 +21,8 @@ Status: Fixed token timing measurement
 Description: Fixed token duration measurement which was timing the append() operation (~0ms) instead of actual token generation time. Implemented proper timing by tracking time between consecutive token arrivals from the streamer. Added last_token_time variable to measure duration as (current_token_time - last_token_time). For the first token, uses a reasonable default of 50ms. This fix ensures accurate token duration values (10-100ms per token) and correct energy calculations.
 Files Modified: backend/main.py
 
+[2026-01-14] BUG-005 - COMPLETED
+Status: Fixed token field name mismatch between backend and frontend
+Description: Fixed field name inconsistency where backend sent 'token_index' but frontend expected 'token_position'. Updated three WebSocket callbacks in backend/main.py: stream_token_complete, stream_layer_metrics, and stream_component_metrics to send 'token_position' instead of 'token_index'. This ensures token position displays correctly in all frontend components (TokenGenerationStream hover tooltips, LiveLayerHeatmap, CurrentOperationIndicator, etc.).
+Files Modified: backend/main.py
+

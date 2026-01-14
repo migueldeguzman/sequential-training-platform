@@ -60,7 +60,7 @@
       "title": "Fix token field name mismatch between backend and frontend",
       "description": "Backend sends 'token_index' but frontend TokenCompleteMessage expects 'token_position'. This causes token_position to be undefined in frontend.",
       "priority": "high",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read backend/main.py emit_token_complete_event call around line 1950. It sends token_index. Read src/components/profiling/ProfilingContext.tsx handleMessage function and TokenCompleteMessage type. Frontend maps message.token_position.",
         "test": "Profile and hover over tokens in TokenGenerationStream. Token position shows 'undefined' or wrong value.",

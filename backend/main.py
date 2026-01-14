@@ -1900,7 +1900,7 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                     "type": ProfilingMessageType.TOKEN_COMPLETE,
                     "timestamp": token_data.get("timestamp"),
                     "data": {
-                        "token_index": token_data.get("token_index"),
+                        "token_position": token_data.get("token_index"),  # Frontend expects token_position
                         "token_text": token_data.get("token_text"),
                         "duration_ms": token_data.get("duration_ms"),
                         "energy_mj": token_data.get("energy_mj"),
@@ -1922,7 +1922,7 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                     "type": ProfilingMessageType.LAYER_METRICS,
                     "timestamp": layer_metrics_data.get("timestamp"),
                     "data": {
-                        "token_index": layer_metrics_data.get("token_index"),
+                        "token_position": layer_metrics_data.get("token_index"),  # Frontend expects token_position
                         "layer_index": layer_metrics_data.get("layer_index"),
                         "layer_name": layer_metrics_data.get("layer_name"),
                         "total_duration_ms": layer_metrics_data.get("total_duration_ms"),
@@ -1944,7 +1944,7 @@ async def profiled_generate(request: ProfiledGenerateRequest):
                     "type": ProfilingMessageType.COMPONENT_METRICS,
                     "timestamp": component_metrics_data.get("timestamp"),
                     "data": {
-                        "token_index": component_metrics_data.get("token_index"),
+                        "token_position": component_metrics_data.get("token_index"),  # Frontend expects token_position
                         "layer_index": component_metrics_data.get("layer_index"),
                         "component_name": component_metrics_data.get("component_name"),
                         "module_path": component_metrics_data.get("module_path"),
