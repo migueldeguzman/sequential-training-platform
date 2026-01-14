@@ -2996,3 +2996,19 @@ Notes:
 - Enables cross-model energy efficiency comparisons
 - Database layer already had J/t calculations implemented
 ---
+
+## 2026-01-14
+### EP-070: Testing - LayerProfiler Unit Tests - COMPLETED
+- Created backend/tests/test_layer_profiler.py with comprehensive unit tests
+- Test hook registration on mock model with 13 test cases
+- Test timing capture accuracy with perf_counter()
+- Test activation statistics calculation (mean, std, max, sparsity)
+- Test activation capture enabled/disabled modes
+- Test hook cleanup and detach() method
+- Test context manager behavior (__enter__, __exit__)
+- Test context manager cleanup on exception
+- Test reset() clears timings between tokens
+- Test get_timings() returns copy not reference
+- Test multiple layers profiled correctly
+- Test tuple output handling from attention modules
+- All 13 tests pass successfully (pytest 8.3.5)

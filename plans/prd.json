@@ -1149,7 +1149,7 @@
       "title": "Testing - LayerProfiler Unit Tests",
       "description": "Add unit tests for LayerProfiler class",
       "priority": "MEDIUM",
-      "passes": false,
+      "passes": true,
       "steps": [
         "Test hook registration on mock model",
         "Test timing capture",
