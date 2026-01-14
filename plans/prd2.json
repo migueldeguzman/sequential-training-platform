@@ -190,7 +190,7 @@
       "title": "Fix ProfilingContext token mapping",
       "description": "ProfilingContext handleMessage maps TokenCompleteMessage fields but some field names don't match backend output, causing data loss.",
       "priority": "medium",
-      "passes": false,
+      "passes": true,
       "debug_steps": {
         "review": "Read src/components/profiling/ProfilingContext.tsx handleMessage for 'token_complete' case. Check field mapping: id, token_text, token_position, duration_ms, energy_mj, power_snapshot_mw, phase, start_time, end_time.",
         "test": "Profile and check TokenMetrics in React DevTools. Some fields may be undefined.",

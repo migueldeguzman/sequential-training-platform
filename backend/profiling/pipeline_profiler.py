@@ -1184,11 +1184,11 @@ class InferencePipelineProfiler:
 
         # Build token complete message
         token_data = {
-            "token_index": token_index,
+            "token_position": token_index,  # Frontend expects token_position
             "token_text": token_text,
             "duration_ms": duration_ms,
             "energy_mj": energy_mj,
-            "avg_power_mw": avg_power_mw,
+            "power_snapshot_mw": avg_power_mw,  # Frontend expects power_snapshot_mw
             "power_snapshot": power_snapshot,
             "layer_metrics_summary": layer_metrics_summary,
             "layer_metrics": layer_metrics,  # Add full layer-by-layer data
