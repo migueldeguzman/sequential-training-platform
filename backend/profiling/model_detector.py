@@ -495,3 +495,98 @@ def is_streaming_compatible(model: Any) -> bool:
         logger.warning(f"Could not determine streaming compatibility: {e}")
         # Default to streaming-compatible if we can't detect
         return True
+
+
+def extract_model_features(model: Any) -> Dict[str, Any]:
+    """
+    Extract model features from model configuration for database storage.
+
+    Extracts architecture details like number of layers, hidden size, attention heads,
+    and other structural information that's useful for profiling analysis.
+
+    Args:
+        model: PyTorch model to extract features from
+
+    Returns:
+        Dictionary containing model features with keys:
+        - num_layers: Number of transformer layers
+        - hidden_size: Hidden dimension size
+        - intermediate_size: FFN intermediate dimension
+        - num_attention_heads: Number of attention heads
+        - num_key_value_heads: Number of key-value heads (for GQA)
+        - total_params: Total number of parameters (estimated)
+        - attention_mechanism: Type of attention (e.g., 'MHA', 'GQA', 'MQA')
+        - is_moe: Whether model uses Mixture of Experts
+        - num_experts: Number of experts (for MoE models)
+        - num_active_experts: Number of active experts per token (for MoE)
+        - architecture_type: Detected architecture type
+    """
+    features = {
+        'num_layers': None,
+        'hidden_size': None,
+        'intermediate_size': None,
+        'num_attention_heads': None,
+        'num_key_value_heads': None,
+        'total_params': None,
+        'attention_mechanism': None,
+        'is_moe': False,
+        'num_experts': None,
+        'num_active_experts': None,
+        'architecture_type': None
+    }
+
+    try:
+        config = getattr(model, 'config', None)
+        if not config:
+            logger.warning("Model has no config attribute, cannot extract features")
+            return features
+
+        # Detect architecture type
+        try:
+            components = detect_model_architecture(model)
+            features['architecture_type'] = components.architecture
+            features['num_layers'] = components.num_layers
+        except Exception as e:
+            logger.warning(f"Could not detect architecture: {e}")
+
+        # Extract basic dimensions from config
+        features['hidden_size'] = getattr(config, 'hidden_size', None)
+        features['intermediate_size'] = getattr(config, 'intermediate_size', None)
+        features['num_attention_heads'] = getattr(config, 'num_attention_heads', None)
+        features['num_key_value_heads'] = getattr(config, 'num_key_value_heads', features['num_attention_heads'])
+
+        # Detect attention mechanism
+        if features['num_attention_heads'] and features['num_key_value_heads']:
+            if features['num_key_value_heads'] == features['num_attention_heads']:
+                features['attention_mechanism'] = 'MHA'  # Multi-Head Attention
+            elif features['num_key_value_heads'] == 1:
+                features['attention_mechanism'] = 'MQA'  # Multi-Query Attention
+            else:
+                features['attention_mechanism'] = 'GQA'  # Grouped-Query Attention
+
+        # Check for Mixture of Experts (MoE)
+        features['is_moe'] = getattr(config, 'is_moe', False) or getattr(config, 'num_experts', None) is not None
+        features['num_experts'] = getattr(config, 'num_experts', None)
+        features['num_active_experts'] = getattr(config, 'num_experts_per_tok', None) or getattr(config, 'num_active_experts', None)
+
+        # Calculate total parameters (approximate)
+        # This is an estimate based on common transformer architecture patterns
+        if features['num_layers'] and features['hidden_size']:
+            try:
+                # Count actual parameters if model has parameters
+                total_params = sum(p.numel() for p in model.parameters())
+                features['total_params'] = total_params
+            except Exception as e:
+                logger.warning(f"Could not count model parameters: {e}")
+                # Fallback to estimation if counting fails
+                features['total_params'] = None
+
+        logger.info(f"Extracted model features: {features['architecture_type']} architecture, "
+                   f"{features['num_layers']} layers, {features['hidden_size']} hidden size, "
+                   f"{features['total_params']:,} params" if features['total_params'] else
+                   f"{features['num_layers']} layers, {features['hidden_size']} hidden size")
+
+    except Exception as e:
+        logger.error(f"Failed to extract model features: {e}")
+
+    return features
