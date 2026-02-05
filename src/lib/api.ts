@@ -20,6 +20,8 @@ import type {
   ProfilingRunsFilter,
   PowerSample,
   TokenMetrics,
+  EnergyPrediction,
+  EnergyPredictionRequest,
 } from "@/types";
 import { API_BASE_URL } from "./config";
 
@@ -30,10 +32,8 @@ async function fetchApi<T>(
   options?: RequestInit
 ): Promise<ApiResponse<T>> {
   try {
-    const token = localStorage.getItem("auth_token");
     const headers: HeadersInit = {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options?.headers,
     };
 
@@ -197,22 +197,6 @@ export const settingsApi = {
     }),
 };
 
-// Auth API
-export const authApi = {
-  login: (username: string, password: string) =>
-    fetchApi<{ token: string; username: string }>("/api/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ username, password }),
-    }),
-
-  logout: () =>
-    fetchApi<{ message: string }>("/api/auth/logout", {
-      method: "POST",
-    }),
-
-  verify: () => fetchApi<{ valid: boolean; username: string }>("/api/auth/verify"),
-};
-
 // Inference API
 export const inferenceApi = {
   // Load a model for inference
@@ -362,6 +346,13 @@ export const profilingApi = {
       notes: string[];
     }>(`/api/profiling/moe-analysis/${id}`),
 
+  // Predict energy consumption before running inference
+  predictEnergy: (request: EnergyPredictionRequest) =>
+    fetchApi<EnergyPrediction>("/api/profiling/predict", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+
   // Delete profiling run and all related data
   deleteProfilingRun: (id: string) =>
     fetchApi<{ success: boolean; message: string; run_id: string }>(`/api/profiling/run/${id}`, {
@@ -451,7 +442,6 @@ export const api = {
   training: trainingApi,
   models: modelApi,
   settings: settingsApi,
-  auth: authApi,
   inference: inferenceApi,
   profiling: profilingApi,
 

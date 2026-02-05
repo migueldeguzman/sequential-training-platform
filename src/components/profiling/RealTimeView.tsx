@@ -6,6 +6,7 @@ import { PowerTimeSeriesChart } from './charts/PowerTimeSeriesChart';
 import { LiveLayerHeatmap } from './charts/LiveLayerHeatmap';
 import { TokenGenerationStream } from './TokenGenerationStream';
 import CurrentOperationIndicator from './CurrentOperationIndicator';
+import { EnergyPredictionCard } from './EnergyPredictionCard';
 import { useProfilingContext } from './ProfilingContext';
 
 /**
@@ -73,8 +74,8 @@ export function RealTimeView() {
           </div>
         </div>
 
-        {/* Right Column - Token Stream Sidebar (1/4 width on xl screens) */}
-        <div className="xl:col-span-1">
+        {/* Right Column - Token Stream + Prediction Sidebar (1/4 width on xl screens) */}
+        <div className="xl:col-span-1 space-y-6">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 sticky top-6">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
               Token Generation
@@ -87,6 +88,11 @@ export function RealTimeView() {
               </div>
             )}
           </div>
+
+          {/* Energy Prediction - Shows when not profiling */}
+          {!isProfiling && (
+            <EnergyPredictionCard />
+          )}
         </div>
       </div>
 

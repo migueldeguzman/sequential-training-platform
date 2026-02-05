@@ -146,17 +146,6 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
-// Auth types
-export interface User {
-  username: string;
-  isAuthenticated: boolean;
-}
-
-export interface AuthState {
-  user: User | null;
-  token: string | null;
-}
-
 // Energy Profiling types
 
 export interface PowerSample {
@@ -533,6 +522,26 @@ export interface ProfilingRunsFilter {
   offset?: number;
   sort_by?: 'date' | 'duration' | 'energy' | 'efficiency' | 'joules_per_token';
   sort_order?: 'asc' | 'desc';
+}
+
+// Energy Prediction types
+
+export interface EnergyPrediction {
+  predicted_total_energy_mj: number;
+  predicted_prefill_energy_mj: number;
+  predicted_decode_energy_mj: number;
+  predicted_energy_per_token_mj: number;
+  confidence_interval_95_pct: [number, number];
+  model_accuracy_r2: number;
+  features_used: string[];
+  prediction_notes: string | null;
+}
+
+export interface EnergyPredictionRequest {
+  model_name: string;
+  input_tokens: number;
+  output_tokens: number;
+  batch_size?: number;
 }
 
 // EP-092: Energy Scaling Analysis types
