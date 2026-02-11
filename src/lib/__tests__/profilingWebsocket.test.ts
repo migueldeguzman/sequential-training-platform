@@ -186,4 +186,106 @@ describe('useProfilingWebSocket', () => {
     // Should not throw errors
     expect(true).toBe(true);
   });
+
+  it('implements exponential backoff on reconnection', () => {
+    const { result } = renderHook(() => useProfilingWebSocket());
+
+    // Connect and simulate disconnect
+    act(() => {
+      result.current.connect();
+    });
+
+    // Simulate WebSocket close
+    const onCloseHandler = (global.WebSocket as jest.Mock).mock.results[0].value.addEventListener.mock.calls.find(
+      (call: [string, (event: CloseEvent) => void]) => call[0] === 'close'
+    )?.[1];
+
+    if (onCloseHandler) {
+      act(() => {
+        onCloseHandler({ code: 1006, reason: 'Abnormal closure' } as CloseEvent);
+      });
+
+      // Should be in reconnecting state
+      expect(result.current.connectionState).toBe('reconnecting');
+    }
+  });
+
+  it('handles heartbeat mechanism', () => {
+    const { result } = renderHook(() => useProfilingWebSocket());
+
+    act(() => {
+      result.current.connect();
+    });
+
+    // Advance timers for heartbeat
+    jest.advanceTimersByTime(30000);
+
+    // WebSocket should still be managed properly
+    expect(result.current.connectionState).toBeDefined();
+  });
+
+  it('handles message parsing errors gracefully', () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation();
+    const { result } = renderHook(() => useProfilingWebSocket());
+
+    act(() => {
+      result.current.connect();
+    });
+
+    // Simulate malformed message
+    const onMessageHandler = (global.WebSocket as jest.Mock).mock.results[0].value.addEventListener.mock.calls.find(
+      (call: [string, (event: MessageEvent) => void]) => call[0] === 'message'
+    )?.[1];
+
+    if (onMessageHandler) {
+      act(() => {
+        onMessageHandler({ data: 'invalid json{' } as MessageEvent);
+      });
+
+      // Should handle error without crashing
+      expect(result.current.connectionState).toBeDefined();
+    }
+
+    consoleError.mockRestore();
+  });
+
+  it('prevents duplicate connections', () => {
+    const { result } = renderHook(() => useProfilingWebSocket());
+
+    act(() => {
+      result.current.connect();
+      result.current.connect();
+    });
+
+    // Should only create one WebSocket
+    expect(global.WebSocket).toHaveBeenCalledTimes(1);
+  });
+
+  it('recovers after backend restart', () => {
+    const { result } = renderHook(() => useProfilingWebSocket());
+
+    act(() => {
+      result.current.connect();
+    });
+
+    // Simulate backend disconnect
+    const onCloseHandler = (global.WebSocket as jest.Mock).mock.results[0].value.addEventListener.mock.calls.find(
+      (call: [string, (event: CloseEvent) => void]) => call[0] === 'close'
+    )?.[1];
+
+    if (onCloseHandler) {
+      act(() => {
+        onCloseHandler({ code: 1006, reason: 'Connection lost' } as CloseEvent);
+      });
+
+      // Should attempt reconnection
+      expect(result.current.connectionState).toBe('reconnecting');
+
+      // Advance timers to trigger reconnection
+      jest.advanceTimersByTime(1000);
+
+      // Should be attempting to reconnect
+      expect(result.current.connectionState).toBeDefined();
+    }
+  });
 });

@@ -1,0 +1,45 @@
+# ML Dashboard - Automation Progress
+
+## Session: 2026-01-15
+
+### Completed
+- [x] Created automation folder structure
+- [x] Copied ralph.sh from base-automation
+- [x] Created comprehensive prd.json with:
+  - Full project architecture documentation
+  - 7 modules with all endpoints mapped
+  - 7 tracked errors (4 resolved, 3 pending)
+  - 10 test specifications with Chrome DevTools integration
+  - 4 fix items identified
+
+### Current Issues
+1. **ERR-001** Port 8000 conflict - RESOLVED (kill process)
+2. **ERR-002** Stale .next cache - RESOLVED (clear cache)
+3. **ERR-003** WebSocket timeout - RESOLVED (backend wasn't running)
+4. **ERR-004** Models not loading - NEEDS INVESTIGATION
+5. **ERR-005** PowerMetrics plist warnings - LOW priority
+6. **ERR-006** FastAPI regex deprecation - LOW priority
+7. **ERR-007** Tokenizer regex warning - LOW priority
+
+### Next Steps
+1. Run existing tests: `npm test` and `cd backend && pytest`
+2. Implement TEST-001: API Health Check Suite
+3. Investigate ERR-004: Models not loading
+4. Fix ERR-006: FastAPI regex deprecation (quick fix)
+
+### Commands
+```bash
+# Start everything
+npm run dev:all
+
+# Or use the script
+./start.sh
+
+# Run tests
+npm test
+cd backend && pytest
+
+# Kill stuck processes
+lsof -ti:8000 | xargs kill -9
+lsof -ti:3000 | xargs kill -9
+```

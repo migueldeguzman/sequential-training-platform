@@ -38,12 +38,12 @@ LOGS_DIR = CONFIG_DIR / "training_logs"
 
 # Default settings
 DEFAULT_SETTINGS = {
-    "jsonInputDir": "/Users/miguelitodeguzman/Projects/SDB/output",
-    "textOutputDir": "/Users/miguelitodeguzman/Projects/SDB/datasets-from-json",
-    "textDatasetsDir": "/Users/miguelitodeguzman/Projects/SDB/text-datasets",
-    "modelOutputDir": "/Users/miguelitodeguzman/Projects/SDB/trained-models",
-    "baseModelPath": "/Users/miguelitodeguzman/Projects/baseModels/zephyr",
-    "pipelineScript": "/Users/miguelitodeguzman/Projects/SDB/instruction_tuning_pipeline.py",
+    "jsonInputDir": "/Users/miguelitodeguzman/Projects/AI-projects/SDB/output",
+    "textOutputDir": "/Users/miguelitodeguzman/Projects/AI-projects/SDB/datasets-from-json",
+    "textDatasetsDir": "/Users/miguelitodeguzman/Projects/AI-projects/SDB/text-datasets",
+    "modelOutputDir": "/Users/miguelitodeguzman/Projects/AI-projects/SDB/trained-models",
+    "baseModelPath": "/Users/miguelitodeguzman/Projects/AI-projects/BaseModels/zephyr",
+    "pipelineScript": "/Users/miguelitodeguzman/Projects/AI-projects/SDB/instruction_tuning_pipeline.py",
 }
 
 
@@ -939,7 +939,11 @@ print(f"Loading model from {{model_path}}...")
 
 # Always load tokenizer from BASE model to avoid regex pattern issues
 # The tokenizer doesn't change during fine-tuning, only model weights do
-tokenizer = AutoTokenizer.from_pretrained(base_model_path, trust_remote_code=True)
+try:
+    tokenizer = AutoTokenizer.from_pretrained(base_model_path, trust_remote_code=True, fix_mistral_regex=True)
+except TypeError:
+    # fix_mistral_regex not supported for this tokenizer type
+    tokenizer = AutoTokenizer.from_pretrained(base_model_path, trust_remote_code=True)
 print(f"Loading tokenizer from {{base_model_path}} (base model)...")
 
 # torch_dtype: float16 for CUDA, float32 otherwise (same as pipeline)
@@ -1871,7 +1875,11 @@ async def profiled_generate(request: ProfiledGenerateRequest):
         })
 
         # Load model and tokenizer
-        tokenizer = AutoTokenizer.from_pretrained(request.model_path, trust_remote_code=True)
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(request.model_path, trust_remote_code=True, fix_mistral_regex=True)
+        except TypeError:
+            # fix_mistral_regex not supported for this tokenizer type
+            tokenizer = AutoTokenizer.from_pretrained(request.model_path, trust_remote_code=True)
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 
@@ -2977,7 +2985,7 @@ async def get_profiling_pipeline_breakdown(run_id: str):
 @app.get("/api/profiling/export/{run_id}")
 async def export_profiling_run(
     run_id: str,
-    format: str = Query("json", regex="^(json|csv)$")
+    format: str = Query("json", pattern="^(json|csv)$")
 ):
     """
     Export profiling run data in JSON or CSV format.
@@ -4062,12 +4070,33 @@ async def cleanup_profiling_runs(
             db.close()
 
 
+@app.post("/api/profiling/prompt-features")
+async def analyze_prompt_features(prompt_text: str):
+    """
+    Extract linguistic features from a prompt for energy analysis.
+
+    Body Parameters:
+        prompt_text: Raw prompt text to analyze
+
+    Returns:
+        Dictionary of extracted prompt features (lexical diversity, complexity, etc.)
+    """
+    from .profiling.prompt_features import extract_prompt_features
+    try:
+        features = extract_prompt_features(prompt_text)
+        return {"features": features.to_dict(), "feature_vector": features.to_feature_vector()}
+    except Exception as e:
+        logger.error(f"Prompt feature extraction failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/profiling/predict")
 async def predict_energy(
     model_name: str,
     input_tokens: int,
     output_tokens: int,
-    batch_size: int = 1
+    batch_size: int = 1,
+    prompt_text: Optional[str] = None,
 ):
     """
     Predict energy consumption before running inference.
@@ -4187,6 +4216,7 @@ async def predict_energy(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             batch_size=batch_size,
+            prompt_text=prompt_text,
         )
 
         return prediction.to_dict()

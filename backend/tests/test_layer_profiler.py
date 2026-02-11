@@ -12,10 +12,15 @@ Tests cover:
 import unittest
 from unittest.mock import Mock, MagicMock, patch, call
 import time
+import sys
+import os
 import torch
 
-from backend.profiling.layer_profiler import LayerProfiler, ComponentTiming
-from backend.profiling.model_detector import ComponentPaths
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from profiling.layer_profiler import LayerProfiler, ComponentTiming
+from profiling.model_detector import ComponentPaths
 
 
 class MockModule(torch.nn.Module):

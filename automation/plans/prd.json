@@ -1,0 +1,488 @@
+{
+  "name": "ML Dashboard - Complete Platform Specification",
+  "description": "Sequential Training and Testing Platform with Energy Profiling - comprehensive Next.js/FastAPI application for ML model training, inference, and real-time energy monitoring",
+  "version": "0.1.0",
+  "techStack": {
+    "frontend": ["Next.js 15", "React 19", "TypeScript 5", "Tailwind CSS 3.4", "D3.js 7.9"],
+    "backend": ["FastAPI", "Python 3.9+", "SQLite", "PyTorch 2.0+", "Transformers 4.36+"],
+    "testing": ["Jest 29", "Testing Library", "Pytest"],
+    "realtime": ["WebSockets"]
+  },
+  "architecture": {
+    "Frontend": {
+      "app": ["page.tsx (main dashboard)", "layout.tsx", "globals.css"],
+      "lib": ["api.ts (REST client)", "websocket.ts (training WS)", "profilingWebsocket.ts (profiling WS)", "config.ts", "storage.ts"],
+      "components": {
+        "core": ["DatasetPanel", "TrainingConfigPanel", "TrainingMonitor", "TrainingHistory", "ModelManagement", "TestingPanel", "SettingsPanel", "EnergyProfilerPanel", "ErrorBoundary"],
+        "profiling": ["ProfilingContext", "ProfilingControls", "RealTimeView", "HistoryBrowser", "RunList", "RunDetail", "DeepDrilldown", "AnalysisView", "CompareView", "MoEAnalysis", "LongContextAnalysis", "ArchitecturalAnalysis"],
+        "charts": ["PowerTimeSeriesChart", "HeatmapChart", "LiveLayerHeatmap", "PipelineTimeline", "WaterfallChart", "SankeyChart", "TreemapChart", "ModelComparisonChart", "EnergyScalingChart", "ThroughputEnergyTradeoffChart"]
+      },
+      "types": "100+ TypeScript interfaces in types/index.ts"
+    },
+    "Backend": {
+      "main": "main.py (5615 lines, 60+ endpoints)",
+      "profiling": ["database.py", "power_monitor.py", "layer_profiler.py", "deep_profiler.py", "pipeline_profiler.py", "model_features.py", "model_detector.py", "engine_detector.py", "energy_predictor.py", "profiling_config.py", "utils.py"]
+    }
+  },
+  "modules": [
+    {
+      "id": "MOD-001",
+      "name": "Dataset Management",
+      "description": "Discover, preview, and convert training datasets between JSON and text formats",
+      "components": ["DatasetPanel.tsx"],
+      "endpoints": [
+        "GET /api/datasets",
+        "GET /api/datasets/{name}",
+        "GET /api/datasets/{name}/preview",
+        "GET /api/datasets/{name}/format",
+        "POST /api/datasets/convert",
+        "POST /api/datasets/batch-convert",
+        "GET /api/text-datasets",
+        "GET /api/text-datasets/{name}",
+        "GET /api/text-datasets/{name}/preview"
+      ],
+      "features": ["Multi-format discovery", "Preview with pagination", "Batch conversion", "Format templates"]
+    },
+    {
+      "id": "MOD-002",
+      "name": "Training Orchestration",
+      "description": "Configure and monitor model training with real-time progress updates",
+      "components": ["TrainingConfigPanel.tsx", "TrainingMonitor.tsx", "TrainingHistory.tsx"],
+      "endpoints": [
+        "GET /api/training/status",
+        "POST /api/training/start",
+        "POST /api/training/stop",
+        "GET /api/training/logs",
+        "GET /api/training/history",
+        "GET /api/training/history/{job_id}",
+        "DELETE /api/training/history/{job_id}",
+        "WS /ws/training"
+      ],
+      "features": ["Hyperparameter configuration", "Real-time progress", "Training history", "Log streaming"]
+    },
+    {
+      "id": "MOD-003",
+      "name": "Model Management",
+      "description": "Discover, inspect, and manage trained model checkpoints",
+      "components": ["ModelManagement.tsx"],
+      "endpoints": [
+        "GET /api/models",
+        "GET /api/models/{name}",
+        "DELETE /api/models/{name}",
+        "GET /api/models/{name}/download"
+      ],
+      "features": ["Multi-location scanning", "Architecture info display", "Model download/export", "Model deletion"]
+    },
+    {
+      "id": "MOD-004",
+      "name": "Inference Testing",
+      "description": "Load models and test generation with various configurations",
+      "components": ["TestingPanel.tsx"],
+      "endpoints": [
+        "GET /api/inference/status",
+        "POST /api/inference/load",
+        "POST /api/inference/unload",
+        "POST /api/inference/generate",
+        "POST /api/inference/generate-loop",
+        "POST /api/inference/generate-batch",
+        "POST /api/inference/export"
+      ],
+      "features": ["Model loading/unloading", "Single/loop/batch generation", "Generation config", "Q&A export"]
+    },
+    {
+      "id": "MOD-005",
+      "name": "Energy Profiling",
+      "description": "Real-time power monitoring and energy analysis for transformer inference",
+      "components": ["EnergyProfilerPanel.tsx", "ProfilingContext.tsx", "ProfilingControls.tsx", "RealTimeView.tsx", "26 profiling components"],
+      "endpoints": [
+        "POST /api/profiling/generate",
+        "POST /api/profiling/cancel",
+        "GET /api/profiling/powermetrics/status",
+        "GET /api/profiling/runs",
+        "GET /api/profiling/run/{run_id}",
+        "GET /api/profiling/run/{run_id}/summary",
+        "GET /api/profiling/run/{run_id}/pipeline",
+        "DELETE /api/profiling/run/{run_id}",
+        "GET /api/profiling/export/{run_id}",
+        "WS /ws/profiling"
+      ],
+      "features": ["Real-time power monitoring", "Layer-wise metrics", "Component-level analysis", "Cost/carbon estimation"]
+    },
+    {
+      "id": "MOD-006",
+      "name": "Advanced Analytics",
+      "description": "Multi-run comparison, scaling analysis, and efficiency benchmarking",
+      "components": ["AnalysisView.tsx", "CompareView.tsx", "ArchitecturalAnalysis.tsx", "MoEAnalysis.tsx"],
+      "endpoints": [
+        "GET /api/profiling/architectural-analysis",
+        "GET /api/profiling/long-context-analysis",
+        "GET /api/profiling/energy-scaling-analysis",
+        "GET /api/profiling/throughput-energy-tradeoff",
+        "GET /api/profiling/quantization-comparison",
+        "GET /api/profiling/moe-analysis/{run_id}",
+        "POST /api/profiling/compare",
+        "POST /api/profiling/batch-size-analysis",
+        "POST /api/profiling/predict"
+      ],
+      "features": ["Scaling law analysis", "Pareto frontier", "MoE expert analysis", "Quantization impact"]
+    },
+    {
+      "id": "MOD-007",
+      "name": "Settings & Configuration",
+      "description": "Application settings and directory configuration",
+      "components": ["SettingsPanel.tsx"],
+      "endpoints": [
+        "GET /api/settings",
+        "POST /api/settings",
+        "POST /api/settings/browse"
+      ],
+      "features": ["Directory configuration", "Path validation", "Settings persistence"]
+    }
+  ],
+  "errors": [
+    {
+      "id": "ERR-001",
+      "title": "Port 8000 Already In Use",
+      "description": "Backend fails to start with address already in use error",
+      "category": "STARTUP",
+      "severity": "CRITICAL",
+      "rootCause": "Previous Python/FastAPI process not properly terminated",
+      "resolution": "Kill existing process: lsof -ti:8000 | xargs kill -9",
+      "resolved": true
+    },
+    {
+      "id": "ERR-002",
+      "title": "MODULE_NOT_FOUND in .next Build Cache",
+      "description": "Next.js returns 500 error after file deletions due to stale cache",
+      "category": "BUILD",
+      "severity": "HIGH",
+      "rootCause": "Stale webpack chunks reference deleted modules",
+      "resolution": "Clear cache: rm -rf .next && npm run dev",
+      "resolved": true
+    },
+    {
+      "id": "ERR-003",
+      "title": "WebSocket Connection Timeout",
+      "description": "Frontend fails to connect to WebSocket endpoints",
+      "category": "RUNTIME",
+      "severity": "HIGH",
+      "rootCause": "Backend not running or not reachable on port 8000",
+      "resolution": "Verify backend is running and restart with npm run dev:all",
+      "resolved": true
+    },
+    {
+      "id": "ERR-004",
+      "title": "Models Not Loading in UI",
+      "description": "Testing and Energy Profiler tabs show loading state indefinitely",
+      "category": "RUNTIME",
+      "severity": "MEDIUM",
+      "rootCause": "Backend /api/models endpoint not responding or returning empty array",
+      "resolution": "Verify models directory exists and contains valid checkpoints. Ensure backend server is running with 'python3 backend/main.py' or use './start.sh'",
+      "resolved": true
+    },
+    {
+      "id": "ERR-005",
+      "title": "PowerMetrics Plist Parse Warnings",
+      "description": "Backend logs repeated plist parsing warnings during profiling",
+      "category": "RUNTIME",
+      "severity": "LOW",
+      "rootCause": "powermetrics output occasionally produces malformed plist data",
+      "resolution": "Add robust error handling with fallback values and rate-limited logging",
+      "resolved": true
+    },
+    {
+      "id": "ERR-006",
+      "title": "FastAPI Regex Deprecation Warning",
+      "description": "Deprecation warning for 'regex' parameter in Query",
+      "category": "BUILD",
+      "severity": "LOW",
+      "location": "backend/main.py:2980",
+      "rootCause": "Using deprecated 'regex' instead of 'pattern'",
+      "resolution": "Change regex to pattern in Query parameter",
+      "resolved": true
+    },
+    {
+      "id": "ERR-007",
+      "title": "Tokenizer Incorrect Regex Pattern Warning",
+      "description": "Tokenizer warning about incorrect regex pattern",
+      "category": "RUNTIME",
+      "severity": "LOW",
+      "rootCause": "Tokenizer saved with incompatible regex pattern",
+      "resolution": "Set fix_mistral_regex=True when loading tokenizer",
+      "resolved": true
+    }
+  ],
+  "testing": {
+    "strategy": "Comprehensive testing using Jest for frontend and Pytest for backend with Chrome DevTools MCP for E2E validation",
+    "existing": {
+      "frontend": [
+        "src/lib/__tests__/profilingWebsocket.test.ts",
+        "src/components/profiling/__tests__/ProfilingContext.test.tsx",
+        "src/components/profiling/__tests__/ProfilingControls.test.tsx",
+        "src/components/profiling/__tests__/EnergyProfilerPanel.test.tsx",
+        "src/components/profiling/charts/__tests__/PowerTimeSeriesChart.test.tsx",
+        "src/components/profiling/charts/__tests__/HeatmapChart.test.tsx"
+      ],
+      "backend": [
+        "backend/tests/test_integration.py",
+        "backend/tests/test_database.py",
+        "backend/tests/test_layer_profiler.py",
+        "backend/tests/test_power_monitor.py"
+      ]
+    },
+    "required": [
+      {
+        "id": "TEST-001",
+        "title": "API Endpoint Health Check Suite",
+        "description": "Test all 60+ REST endpoints respond correctly",
+        "priority": "CRITICAL",
+        "type": "integration",
+        "steps": [
+          "Create test file: backend/tests/test_api_health.py",
+          "Test each endpoint category: datasets, training, models, inference, profiling",
+          "Verify correct HTTP status codes",
+          "Validate response schemas match TypeScript types",
+          "Test error cases return proper error responses"
+        ],
+        "chromeDevTools": [
+          "Network tab: Verify API response times < 500ms",
+          "Console: Check no CORS errors",
+          "Application: Verify localStorage persistence"
+        ],
+        "passes": true
+      },
+      {
+        "id": "TEST-002",
+        "title": "WebSocket Connection Stability Tests",
+        "description": "Test WebSocket connections handle disconnects and reconnects gracefully",
+        "priority": "CRITICAL",
+        "type": "unit",
+        "steps": [
+          "Test initial connection establishment",
+          "Test reconnection with exponential backoff",
+          "Test message parsing for all message types",
+          "Test heartbeat/ping-pong mechanism",
+          "Test graceful cleanup on component unmount",
+          "Simulate backend restart and verify recovery"
+        ],
+        "chromeDevTools": [
+          "Network tab > WS: Monitor WebSocket frames",
+          "Verify heartbeat messages every 30s",
+          "Check reconnection attempts on disconnect"
+        ],
+        "passes": true
+      },
+      {
+        "id": "TEST-003",
+        "title": "Dataset Panel Component Tests",
+        "description": "Test dataset discovery, preview, and conversion workflows",
+        "priority": "HIGH",
+        "type": "component",
+        "steps": [
+          "Create test file: src/components/__tests__/DatasetPanel.test.tsx",
+          "Test dataset list rendering",
+          "Test preview pagination",
+          "Test format template selection",
+          "Test batch conversion flow",
+          "Test error handling for missing datasets"
+        ],
+        "chromeDevTools": [
+          "Elements: Verify DOM structure",
+          "Console: Check no React warnings",
+          "Network: Verify API calls on interactions"
+        ],
+        "passes": true
+      },
+      {
+        "id": "TEST-004",
+        "title": "Training Monitor Real-time Updates",
+        "description": "Test training progress updates via WebSocket",
+        "priority": "HIGH",
+        "type": "integration",
+        "steps": [
+          "Create test file: src/components/__tests__/TrainingMonitor.test.tsx",
+          "Mock WebSocket messages",
+          "Test progress bar updates",
+          "Test loss chart rendering",
+          "Test log streaming display",
+          "Test stop training functionality"
+        ],
+        "chromeDevTools": [
+          "Performance: Profile render performance during updates",
+          "Network > WS: Verify message frequency",
+          "Memory: Check for leaks during long sessions"
+        ],
+        "passes": true
+      },
+      {
+        "id": "TEST-005",
+        "title": "Model Loading and Inference Tests",
+        "description": "Test model loading states and generation workflows",
+        "priority": "HIGH",
+        "type": "integration",
+        "steps": [
+          "Create test file: src/components/__tests__/TestingPanel.test.tsx",
+          "Test model dropdown population",
+          "Test loading/unloading states",
+          "Test single generation flow",
+          "Test loop generation with progress",
+          "Test batch generation results display",
+          "Test export functionality"
+        ],
+        "chromeDevTools": [
+          "Network: Monitor /api/inference/* calls",
+          "Console: Check for timeout errors",
+          "Application: Verify results caching"
+        ],
+        "passes": true
+      },
+      {
+        "id": "TEST-006",
+        "title": "Energy Profiling End-to-End Test",
+        "description": "Test complete profiling workflow from start to visualization",
+        "priority": "CRITICAL",
+        "type": "e2e",
+        "steps": [
+          "Create test file: src/components/profiling/__tests__/ProfilingE2E.test.tsx",
+          "Test profiling controls validation",
+          "Test profiling start triggers WebSocket connection",
+          "Test real-time power sample updates",
+          "Test token generation stream display",
+          "Test run completion and summary generation",
+          "Test history browser population",
+          "Test run detail view rendering"
+        ],
+        "chromeDevTools": [
+          "Performance: Profile during live profiling",
+          "Network > WS: Monitor profiling message stream",
+          "Memory: Check chart data doesn't cause leaks",
+          "Lighthouse: Accessibility audit on profiling UI"
+        ],
+        "passes": true
+      },
+      {
+        "id": "TEST-007",
+        "title": "Chart Visualization Tests",
+        "description": "Test D3.js chart rendering with various data shapes",
+        "priority": "MEDIUM",
+        "type": "component",
+        "steps": [
+          "Extend existing chart tests",
+          "Test PowerTimeSeriesChart with live data",
+          "Test HeatmapChart color scaling",
+          "Test SankeyChart energy flow",
+          "Test EnergyScalingChart regression lines",
+          "Test responsive behavior on resize"
+        ],
+        "chromeDevTools": [
+          "Elements: Inspect SVG structure",
+          "Performance: Profile render during updates",
+          "Device toolbar: Test responsive layouts"
+        ],
+        "passes": true
+      },
+      {
+        "id": "TEST-008",
+        "title": "Backend Database Integration Tests",
+        "description": "Test SQLite profiling database operations",
+        "priority": "HIGH",
+        "type": "integration",
+        "steps": [
+          "Extend backend/tests/test_database.py",
+          "Test run creation and retrieval",
+          "Test power sample batch insertion",
+          "Test aggregation queries accuracy",
+          "Test filtering and sorting",
+          "Test retention cleanup functionality"
+        ],
+        "passes": true
+      },
+      {
+        "id": "TEST-009",
+        "title": "Power Monitor Platform Tests",
+        "description": "Test power monitoring on different platforms",
+        "priority": "MEDIUM",
+        "type": "unit",
+        "steps": [
+          "Test Apple Silicon powermetrics integration",
+          "Test NVIDIA nvidia-smi integration",
+          "Test mock monitors for CI/testing",
+          "Test sample rate consistency",
+          "Test component breakdown accuracy"
+        ],
+        "passes": true
+      },
+      {
+        "id": "TEST-010",
+        "title": "Error Boundary and Recovery Tests",
+        "description": "Test application handles errors gracefully",
+        "priority": "MEDIUM",
+        "type": "component",
+        "steps": [
+          "Test ErrorBoundary catches component errors",
+          "Test ProfilingErrorBoundary recovery UI",
+          "Test API error handling shows user-friendly messages",
+          "Test WebSocket disconnect shows reconnecting state",
+          "Test backend unavailable shows offline indicator"
+        ],
+        "chromeDevTools": [
+          "Console: Verify errors are caught and logged",
+          "Elements: Verify error UI renders correctly"
+        ],
+        "passes": true
+      }
+    ]
+  },
+  "features": [
+    {
+      "id": "FIX-001",
+      "title": "Fix FastAPI Regex Deprecation",
+      "description": "Update Query parameter from deprecated 'regex' to 'pattern'",
+      "priority": "LOW",
+      "steps": [
+        "Open backend/main.py line 2980",
+        "Change 'regex' to 'pattern'",
+        "Test endpoint validation still works"
+      ],
+      "passes": true
+    },
+    {
+      "id": "FIX-002",
+      "title": "Improve PowerMetrics Plist Parsing",
+      "description": "Add robust error handling for malformed plist data",
+      "priority": "MEDIUM",
+      "steps": [
+        "Locate plist parsing in backend/profiling/power_monitor.py",
+        "Add try-catch with fallback to last valid sample",
+        "Rate-limit warning logs",
+        "Add unit tests for malformed input"
+      ],
+      "passes": true
+    },
+    {
+      "id": "FIX-003",
+      "title": "Add Tokenizer Regex Fix Flag",
+      "description": "Set fix_mistral_regex=True when loading tokenizers",
+      "priority": "MEDIUM",
+      "steps": [
+        "Find tokenizer loading in backend inference code",
+        "Add fix_mistral_regex=True parameter",
+        "Test with Gemma and Mistral models"
+      ],
+      "passes": true
+    },
+    {
+      "id": "FIX-004",
+      "title": "Implement Comprehensive Test Suite",
+      "description": "Create all tests defined in testing.required section",
+      "priority": "HIGH",
+      "steps": [
+        "Implement TEST-001 through TEST-010",
+        "Achieve 80%+ code coverage",
+        "Set up CI pipeline for automated testing",
+        "Add pre-commit hooks for test execution"
+      ],
+      "passes": true
+    }
+  ]
+}

@@ -10,6 +10,8 @@ import tempfile
 import os
 import sys
 import sqlite3
+import time
+import uuid
 from datetime import datetime, timedelta
 
 # Add parent directory to path for imports

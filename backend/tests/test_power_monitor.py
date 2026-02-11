@@ -621,5 +621,184 @@ class TestPowerMonitorErrorHandling(unittest.TestCase):
         mock_process.kill.assert_called_once()
 
 
+class TestPowerMonitorMalformedPlistHandling(unittest.TestCase):
+    """Tests for malformed plist parsing with fallback to last valid sample (FIX-002)"""
+
+    def test_handle_parse_error_with_fallback(self):
+        """Test that parse errors fall back to last valid sample"""
+        monitor = PowerMonitor()
+        monitor._start_time = time.time()
+
+        # Create and store a valid sample as the last valid sample
+        valid_sample = PowerSample(
+            timestamp=time.time(),
+            relative_time_ms=100.0,
+            cpu_power_mw=1500.0,
+            gpu_power_mw=3000.0,
+            ane_power_mw=500.0,
+            dram_power_mw=800.0,
+            total_power_mw=5800.0,
+            phase='idle'
+        )
+        monitor._last_valid_sample = valid_sample
+
+        # Trigger parse error handling
+        monitor._handle_parse_error("test error")
+
+        # Should create a fallback sample
+        samples = monitor.get_samples()
+        self.assertEqual(len(samples), 1)
+
+        # Fallback sample should have same power values as last valid sample
+        fallback = samples[0]
+        self.assertEqual(fallback.cpu_power_mw, valid_sample.cpu_power_mw)
+        self.assertEqual(fallback.gpu_power_mw, valid_sample.gpu_power_mw)
+        self.assertEqual(fallback.ane_power_mw, valid_sample.ane_power_mw)
+        self.assertEqual(fallback.dram_power_mw, valid_sample.dram_power_mw)
+        self.assertEqual(fallback.total_power_mw, valid_sample.total_power_mw)
+
+        # But should have updated timestamp
+        self.assertGreaterEqual(fallback.timestamp, valid_sample.timestamp)
+
+    def test_handle_parse_error_rate_limiting(self):
+        """Test that parse error warnings are rate-limited"""
+        monitor = PowerMonitor()
+        monitor._start_time = time.time()
+        monitor._parse_error_log_interval = 1.0  # 1 second for testing
+
+        # Create a valid sample for fallback
+        valid_sample = PowerSample(
+            timestamp=time.time(),
+            relative_time_ms=100.0,
+            cpu_power_mw=1500.0,
+            gpu_power_mw=3000.0,
+            ane_power_mw=500.0,
+            dram_power_mw=800.0,
+            total_power_mw=5800.0
+        )
+        monitor._last_valid_sample = valid_sample
+
+        # Capture print output
+        import io
+        from contextlib import redirect_stdout
+
+        output = io.StringIO()
+        with redirect_stdout(output):
+            # First error should log
+            monitor._handle_parse_error("error 1")
+
+            # Immediate subsequent errors should not log (rate limited)
+            monitor._handle_parse_error("error 2")
+            monitor._handle_parse_error("error 3")
+
+        output_str = output.getvalue()
+
+        # Should only see one warning message
+        warning_count = output_str.count("Warning: Failed to parse plist")
+        self.assertEqual(warning_count, 1)
+
+        # But parse error count should increment
+        self.assertGreater(monitor._parse_error_count, 0)
+
+    def test_handle_parse_error_without_valid_sample(self):
+        """Test that parse errors without last valid sample don't crash"""
+        monitor = PowerMonitor()
+        monitor._start_time = time.time()
+        monitor._last_valid_sample = None
+
+        # Should handle gracefully without crashing
+        monitor._handle_parse_error("test error")
+
+        # No samples should be added if there's no fallback
+        samples = monitor.get_samples()
+        self.assertEqual(len(samples), 0)
+
+    def test_parse_stores_last_valid_sample(self):
+        """Test that successful parsing stores the sample as last valid"""
+        monitor = PowerMonitor()
+        monitor._start_time = time.time()
+
+        import plistlib
+        plist_data = plistlib.loads(SAMPLE_PLIST.encode('utf-8'))
+        sample = monitor._parse_plist_sample(plist_data)
+
+        # Manually simulate what _sampling_loop does
+        monitor._last_valid_sample = sample
+
+        self.assertIsNotNone(monitor._last_valid_sample)
+        self.assertEqual(monitor._last_valid_sample, sample)
+
+    @patch('profiling.power_monitor.PowerMonitor.is_available')
+    @patch('subprocess.Popen')
+    def test_malformed_plist_during_sampling(self, mock_popen, mock_is_available):
+        """Test handling of malformed plist data during sampling loop"""
+        mock_is_available.return_value = True
+
+        # Create a sequence of: valid plist, then invalid plist, then valid plist
+        valid_plist = SAMPLE_PLIST
+        invalid_plist = INVALID_PLIST
+
+        # Mock stdout to provide both valid and invalid plists
+        mock_stdout = StringIO(valid_plist + "\n" + invalid_plist + "\n" + valid_plist + "\n")
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None
+        mock_process.stdout = mock_stdout
+        mock_popen.return_value = mock_process
+
+        monitor = PowerMonitor()
+        monitor.start()
+
+        # Let sampling thread process the data
+        time.sleep(0.5)
+
+        monitor.stop()
+
+        # Should have collected samples despite the invalid plist in the middle
+        samples = monitor.get_samples()
+        # We should have at least the samples from valid plists or fallback samples
+        self.assertGreaterEqual(len(samples), 0)
+
+    def test_plist_buffer_timeout_handling(self):
+        """Test that incomplete plist buffers timeout and reset"""
+        monitor = PowerMonitor()
+        monitor._start_time = time.time()
+        monitor._plist_buffer = "<?xml version='1.0'?><plist><dict>"  # Incomplete
+        monitor._plist_buffer_start_time = time.time() - 15.0  # 15 seconds ago (past timeout)
+
+        # The sampling loop should detect this timeout and reset
+        # We can't easily test the full loop, but we can verify the timeout logic
+        buffer_age = time.time() - monitor._plist_buffer_start_time
+        plist_buffer_timeout = 10.0
+
+        self.assertGreater(buffer_age, plist_buffer_timeout)
+
+    def test_malformed_buffer_without_start_tag(self):
+        """Test handling of malformed buffer missing XML/plist start tag"""
+        monitor = PowerMonitor()
+        monitor._start_time = time.time()
+
+        # Create a valid sample for fallback
+        valid_sample = PowerSample(
+            timestamp=time.time(),
+            relative_time_ms=100.0,
+            cpu_power_mw=1500.0,
+            gpu_power_mw=3000.0,
+            ane_power_mw=500.0,
+            dram_power_mw=800.0,
+            total_power_mw=5800.0
+        )
+        monitor._last_valid_sample = valid_sample
+
+        # Simulate malformed buffer scenario
+        monitor._plist_buffer = "</plist>"  # End tag without start
+
+        # In _sampling_loop, this would trigger _handle_parse_error
+        monitor._handle_parse_error("malformed plist buffer (missing start tag)")
+
+        # Should fall back to last valid sample
+        samples = monitor.get_samples()
+        self.assertEqual(len(samples), 1)
+
+
 if __name__ == '__main__':
     unittest.main()

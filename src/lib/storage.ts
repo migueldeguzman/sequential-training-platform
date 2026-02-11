@@ -1,43 +1,9 @@
-import type { TrainingConfig, AuthState } from "@/types";
+import type { TrainingConfig } from "@/types";
 
 const STORAGE_KEYS = {
-  AUTH: "ml_dashboard_auth",
   TRAINING_CONFIG: "ml_dashboard_training_config",
   THEME: "ml_dashboard_theme",
 } as const;
-
-// Auth storage
-export function saveAuth(auth: AuthState): void {
-  if (typeof window !== "undefined") {
-    localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(auth));
-    if (auth.token) {
-      localStorage.setItem("auth_token", auth.token);
-    } else {
-      localStorage.removeItem("auth_token");
-    }
-  }
-}
-
-export function loadAuth(): AuthState | null {
-  if (typeof window !== "undefined") {
-    const stored = localStorage.getItem(STORAGE_KEYS.AUTH);
-    if (stored) {
-      try {
-        return JSON.parse(stored);
-      } catch {
-        return null;
-      }
-    }
-  }
-  return null;
-}
-
-export function clearAuth(): void {
-  if (typeof window !== "undefined") {
-    localStorage.removeItem(STORAGE_KEYS.AUTH);
-    localStorage.removeItem("auth_token");
-  }
-}
 
 // Training config storage
 export function saveTrainingConfig(config: TrainingConfig): void {

@@ -1,11 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback, lazy, Suspense } from "react";
-import type { Dataset, TextDataset, TrainingConfig, AuthState } from "@/types";
-import { loadAuth, clearAuth } from "@/lib/storage";
-import { authApi, trainingApi, datasetApi, textDatasetsApi } from "@/lib/api";
+import type { Dataset, TextDataset, TrainingConfig } from "@/types";
+import { trainingApi, datasetApi, textDatasetsApi } from "@/lib/api";
 
-import LoginForm from "@/components/LoginForm";
 import DatasetPanel from "@/components/DatasetPanel";
 import TrainingConfigPanel from "@/components/TrainingConfigPanel";
 import TrainingMonitor from "@/components/TrainingMonitor";
@@ -21,8 +19,6 @@ const EnergyProfilerPanel = lazy(() => import("@/components/profiling/EnergyProf
 type TabType = "datasets" | "training" | "history" | "models" | "testing" | "profiling" | "settings";
 
 export default function Home() {
-  const [auth, setAuth] = useState<AuthState | null>(null);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>("training");
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [textDatasets, setTextDatasets] = useState<TextDataset[]>([]);
@@ -43,55 +39,22 @@ export default function Home() {
     }
   }, []);
 
+  // Fetch datasets on mount
   useEffect(() => {
-    const checkAuth = async () => {
-      const stored = loadAuth();
-      if (stored?.token) {
-        const response = await authApi.verify();
-        if (response.success && response.data?.valid) {
-          setAuth(stored);
-        } else {
-          clearAuth();
-        }
-      }
-      setLoading(false);
-    };
-    checkAuth();
-  }, []);
-
-  // Fetch datasets when authenticated
-  useEffect(() => {
-    if (auth) {
-      fetchDatasets();
-      fetchTextDatasets();
-    }
-  }, [auth, fetchDatasets, fetchTextDatasets]);
+    fetchDatasets();
+    fetchTextDatasets();
+  }, [fetchDatasets, fetchTextDatasets]);
 
   useEffect(() => {
     const checkTrainingStatus = async () => {
-      if (auth) {
-        const response = await trainingApi.status();
-        if (response.success && response.data) {
-          setIsTraining(response.data.isRunning);
-        }
+      const response = await trainingApi.status();
+      if (response.success && response.data) {
+        setIsTraining(response.data.isRunning);
       }
     };
     checkTrainingStatus();
     const interval = setInterval(checkTrainingStatus, 5000);
     return () => clearInterval(interval);
-  }, [auth]);
-
-  const handleLogin = useCallback((username: string) => {
-    setAuth({
-      user: { username, isAuthenticated: true },
-      token: localStorage.getItem("auth_token"),
-    });
-  }, []);
-
-  const handleLogout = useCallback(async () => {
-    await authApi.logout();
-    clearAuth();
-    setAuth(null);
   }, []);
 
   const handleStartTraining = useCallback(async (config: TrainingConfig) => {
@@ -108,18 +71,6 @@ export default function Home() {
     setIsTraining(false);
   }, []);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-950">
-        <div className="text-xl">Loading...</div>
-      </div>
-    );
-  }
-
-  if (!auth) {
-    return <LoginForm onLogin={handleLogin} />;
-  }
-
   const tabs: { id: TabType; label: string; icon?: string }[] = [
     { id: "datasets", label: "Datasets" },
     { id: "training", label: "Training" },
@@ -134,19 +85,8 @@ export default function Home() {
     <div className="min-h-screen bg-gray-950">
       {/* Header */}
       <header className="bg-gray-900 border-b border-gray-800">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+        <div className="max-w-7xl mx-auto px-4 py-4">
           <h1 className="text-xl font-bold">Sequential Training and Testing Platform</h1>
-          <div className="flex items-center gap-4">
-            <span className="text-gray-400">
-              Welcome, {auth.user?.username}
-            </span>
-            <button
-              onClick={handleLogout}
-              className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm"
-            >
-              Logout
-            </button>
-          </div>
         </div>
       </header>
 

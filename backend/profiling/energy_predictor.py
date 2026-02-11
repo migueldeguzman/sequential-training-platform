@@ -21,6 +21,8 @@ from typing import Dict, List, Optional, Tuple, Any
 
 import numpy as np
 
+from .prompt_features import PromptFeatures, extract_prompt_features
+
 logger = logging.getLogger(__name__)
 
 
@@ -147,6 +149,7 @@ class EnergyPredictor:
         input_tokens: int,
         output_tokens: int,
         batch_size: int = 1,
+        prompt_text: Optional[str] = None,
     ) -> np.ndarray:
         """
         Extract feature vector for prediction.
@@ -156,6 +159,7 @@ class EnergyPredictor:
             input_tokens: Number of input tokens (prompt length)
             output_tokens: Number of output tokens to generate
             batch_size: Batch size for inference
+            prompt_text: Optional raw prompt text for linguistic feature extraction
 
         Returns:
             Feature vector as numpy array
@@ -195,6 +199,14 @@ class EnergyPredictor:
         # Batch size feature
         batch_feature = batch_size
 
+        # Extract prompt linguistic features if text is provided
+        pf: Optional[PromptFeatures] = None
+        if prompt_text:
+            try:
+                pf = extract_prompt_features(prompt_text)
+            except Exception as e:
+                logger.warning(f"Prompt feature extraction failed: {e}")
+
         # Feature vector (order matters for trained model)
         features = [
             # Basic architecture
@@ -213,7 +225,7 @@ class EnergyPredictor:
             layer_complexity,
             dimension_complexity / 1e6,  # Scale down
             total_complexity / 1e9,  # Scale down
-            # Prompt features
+            # Prompt features (token-level)
             input_tokens,
             output_tokens,
             total_tokens,
@@ -223,6 +235,16 @@ class EnergyPredictor:
             context_complexity / 1e9,  # Scale down
             # Batch size
             batch_feature,
+            # Prompt linguistic features (EP-101)
+            pf.type_token_ratio if pf else 0.0,
+            pf.hapax_ratio if pf else 0.0,
+            pf.avg_sentence_length if pf else 0.0,
+            pf.instruction_density if pf else 0.0,
+            pf.avg_token_entropy if pf else 0.0,
+            pf.punctuation_density if pf else 0.0,
+            pf.long_word_ratio if pf else 0.0,
+            float(pf.code_block_count) if pf else 0.0,
+            float(pf.question_count) if pf else 0.0,
         ]
 
         self.feature_names = [
@@ -246,6 +268,16 @@ class EnergyPredictor:
             "tokens_times_layers_scaled",
             "context_complexity_scaled",
             "batch_size",
+            # Prompt linguistic features
+            "prompt_type_token_ratio",
+            "prompt_hapax_ratio",
+            "prompt_avg_sentence_length",
+            "prompt_instruction_density",
+            "prompt_avg_token_entropy",
+            "prompt_punctuation_density",
+            "prompt_long_word_ratio",
+            "prompt_code_block_count",
+            "prompt_question_count",
         ]
 
         return np.array(features).reshape(1, -1)
@@ -314,6 +346,7 @@ class EnergyPredictor:
         input_tokens: int,
         output_tokens: int,
         batch_size: int = 1,
+        prompt_text: Optional[str] = None,
     ) -> EnergyPrediction:
         """
         Predict energy consumption for a given configuration.
@@ -323,6 +356,7 @@ class EnergyPredictor:
             input_tokens: Number of input tokens (prompt length)
             output_tokens: Number of output tokens to generate
             batch_size: Batch size for inference
+            prompt_text: Optional raw prompt text for richer linguistic features
 
         Returns:
             EnergyPrediction with predicted values and confidence intervals
@@ -333,8 +367,10 @@ class EnergyPredictor:
         if not self.is_trained and self.model is None:
             raise ValueError("Model not trained or loaded. Train the model first or load from file.")
 
-        # Extract features
-        features = self.extract_features(model_features, input_tokens, output_tokens, batch_size)
+        # Extract features (with optional prompt text analysis)
+        features = self.extract_features(
+            model_features, input_tokens, output_tokens, batch_size, prompt_text
+        )
 
         # Predict total energy
         predicted_total = float(self.model.predict(features)[0])

@@ -92,6 +92,12 @@ class PowerMonitor:
         # Track if we've hit the sample limit
         self._sample_limit_warned: bool = False
 
+        # Rate limiting for parse error warnings
+        self._parse_error_count: int = 0
+        self._last_parse_error_time: Optional[float] = None
+        self._parse_error_log_interval: float = 30.0  # Log parse errors at most every 30 seconds
+        self._last_valid_sample: Optional[PowerSample] = None  # Fallback for parse errors
+
     def _check_sample_rate(self) -> None:
         """
         Check actual sample rate and log warning if it deviates significantly from requested rate.
@@ -126,6 +132,60 @@ class PowerMonitor:
         # Update tracking
         self._last_sample_rate_check = current_time
         self._sample_count_at_last_check = len(self._samples)
+
+    def _handle_parse_error(self, error_msg: str) -> None:
+        """
+        Handle plist parsing errors with rate-limited logging and fallback to last valid sample.
+
+        Args:
+            error_msg: Error message describing the parse failure
+        """
+        current_time = time.time()
+        self._parse_error_count += 1
+
+        # Rate-limit warning messages
+        should_log = (
+            self._last_parse_error_time is None or
+            (current_time - self._last_parse_error_time) >= self._parse_error_log_interval
+        )
+
+        if should_log:
+            if self._parse_error_count > 1:
+                print(f"Warning: Failed to parse plist ({self._parse_error_count} errors in "
+                      f"{self._parse_error_log_interval:.0f}s): {error_msg}. "
+                      f"Using fallback values from last valid sample.")
+            else:
+                print(f"Warning: Failed to parse plist: {error_msg}. "
+                      f"Using fallback values from last valid sample.")
+            self._last_parse_error_time = current_time
+            self._parse_error_count = 0
+
+        # If we have a last valid sample, use it as fallback
+        if self._last_valid_sample:
+            # Create a new sample based on last valid sample but with updated timestamp
+            timestamp = time.time()
+            relative_time_ms = (timestamp - self._start_time) * 1000.0 if self._start_time else 0.0
+
+            fallback_sample = PowerSample(
+                timestamp=timestamp,
+                relative_time_ms=relative_time_ms,
+                cpu_power_mw=self._last_valid_sample.cpu_power_mw,
+                gpu_power_mw=self._last_valid_sample.gpu_power_mw,
+                ane_power_mw=self._last_valid_sample.ane_power_mw,
+                dram_power_mw=self._last_valid_sample.dram_power_mw,
+                total_power_mw=self._last_valid_sample.total_power_mw,
+                phase=self._current_phase
+            )
+
+            with self._samples_lock:
+                self._samples.append(fallback_sample)
+
+                # Call power sample callback if set
+                if hasattr(self, '_power_sample_callback') and self._power_sample_callback:
+                    try:
+                        self._power_sample_callback(fallback_sample)
+                    except Exception as cb_e:
+                        print(f"Warning: Power sample callback failed: {cb_e}")
 
     def _parse_plist_sample(self, plist_data: Dict[str, Any]) -> Optional[PowerSample]:
         """
@@ -168,6 +228,11 @@ class PowerMonitor:
             if gpu_power_mw == 0.0:
                 gpu = processor.get('gpu', {})
                 gpu_power_mw = gpu.get('gpu_power', 0.0)
+
+            # ANE power fallback - check nested ane dict
+            if ane_power_mw == 0.0:
+                ane = processor.get('ane', {})
+                ane_power_mw = ane.get('power', 0.0)
 
             # DRAM power - from thermal samplers (not always available)
             thermal = plist_data.get('thermal', {})
@@ -258,6 +323,9 @@ class PowerMonitor:
                             # Extract power sample
                             sample = self._parse_plist_sample(plist_data)
                             if sample:
+                                # Store as last valid sample for fallback
+                                self._last_valid_sample = sample
+
                                 with self._samples_lock:
                                     self._samples.append(sample)
 
@@ -284,11 +352,11 @@ class PowerMonitor:
                                     self._check_sample_rate()
 
                         except plistlib.InvalidFileException as e:
-                            # Invalid plist format - log and skip this sample
-                            print(f"Warning: Failed to parse plist (invalid format): {e}")
+                            # Invalid plist format - use fallback with rate-limited logging
+                            self._handle_parse_error(f"invalid format: {e}")
                         except Exception as e:
-                            # Other parsing errors - log and skip
-                            print(f"Warning: Failed to parse plist: {e}")
+                            # Other parsing errors - use fallback with rate-limited logging
+                            self._handle_parse_error(f"{e}")
                         finally:
                             # Reset buffer for next sample
                             self._plist_buffer = ""
@@ -296,7 +364,7 @@ class PowerMonitor:
                             in_plist = False
                     else:
                         # Malformed buffer without proper start tag, reset
-                        print(f"Warning: Malformed plist buffer (missing start tag), discarding")
+                        self._handle_parse_error("malformed plist buffer (missing start tag)")
                         self._plist_buffer = ""
                         self._plist_buffer_start_time = None
                         in_plist = False
@@ -396,6 +464,11 @@ class PowerMonitor:
         # Reset sample rate tracking
         self._last_sample_rate_check = None
         self._sample_count_at_last_check = 0
+
+        # Reset parse error tracking
+        self._parse_error_count = 0
+        self._last_parse_error_time = None
+        self._last_valid_sample = None
 
         # Start background sampling thread
         self._sampling_thread = threading.Thread(target=self._sampling_loop, daemon=True)
