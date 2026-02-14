@@ -3401,3 +3401,22 @@ Notes:
 - Inference now completes successfully even if advanced profiling hooks fail
 - No more 500 errors for recoverable profiling failures
 - Basic timing metrics still captured when power profiling unavailable
+
+
+### EP-101: Prompt Feature Extraction for Energy Prediction - COMPLETED
+- Created backend/profiling/prompt_features.py with PromptFeatures dataclass
+- Extracts 19 linguistic features from prompt text:
+  - Length: char_count, word_count, sentence_count, avg_word_length, avg_sentence_length
+  - Lexical diversity: type_token_ratio, hapax_ratio
+  - Structure: question_count, instruction_density, code_block_count, list_item_count, has_system_prompt
+  - Complexity: avg_token_entropy, punctuation_density, uppercase_ratio, whitespace_ratio, special_char_ratio
+  - Vocabulary: long_word_ratio, numeric_token_ratio
+- Integrated into EnergyPredictor: extract_features() now accepts optional prompt_text param
+- Feature vector expanded from 20 to 29 dimensions (9 prompt features added to predictor)
+- Key prompt features fed to predictor: TTR, hapax ratio, sentence length, instruction density, entropy, punctuation density, long word ratio, code blocks, questions
+- New endpoint: POST /api/profiling/prompt-features for standalone analysis
+- Updated POST /api/profiling/predict to accept optional prompt_text
+- Backward compatible: all changes optional, no breaking changes
+- 12 unit tests written and passing
+- Based on Caravaca et al. 2025 "From Prompts to Power" findings
+- Commit: c4c0697
